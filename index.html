@@ -421,14 +421,6 @@ body::before{
       <div class="f-spacer"></div>
       <div class="f-actions">
         <div class="ref-status" id="refStatus"><span class="pulse"></span><span id="refTxt">Carregado</span></div>
-        <!-- DEBUG PANEL -->
-        <div style="margin-top:8px;padding:8px;background:#0d100e;border:1px solid #223122;border-radius:4px;font-size:11px;font-family:monospace;">
-          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;color:#a2a49d;">
-            <input type="checkbox" id="skipRecurrencyDebug" style="cursor:pointer;"> 
-            <span>DESABILITAR DEDUPE (DEBUG)</span>
-          </label>
-          <div id="debugOutput" style="margin-top:4px;color:#00ff78;max-height:80px;overflow-y:auto;"></div>
-        </div>
         <button class="btn-ref" id="btnRefresh">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M3 12a9 9 0 0 1 15.5-6.3M21 12a9 9 0 0 1-15.5 6.3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M16 5h5V0M8 19H3v5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
           Atualizar
@@ -1054,12 +1046,6 @@ function rowInstallmentClue(r){
   return null;
 }
 function isUniqueVenSale(r){
-  // 🔴 DEBUG MODE: desabilitar dedupe se SKIP_RECURRENCY_FILTER = true
-  if(window.SKIP_RECURRENCY_FILTER){
-    console.log('[DEBUG] Dedupe desabilitado - contando como venda única');
-    return true;
-  }
-  
   if(isSubscriptionPaymentMode(getPaymentModeValue(r))) return true;
   const val=getRecurrencyValue(r);
   if(val!==null&&val!==undefined) return isFirstRecurrencyValue(val);
@@ -1132,6 +1118,7 @@ function detectColumns(){
   // ── VENDAS ──
   COLS.venDate     = colFind(vh,[/^sales history order date$/,/^purchase order date$/,/order.?date/,/purchase.?order.?date/,/purchase.?date/,/data.*venda/,/data.*compra/,/^date$/,/created/,/^data$/]);
   COLS.venDateBR   = colFind(vh,[/^sales history approved date$/,/^data br$/,/approved.?date/,/payment.?date/,/paid.?date/,/transaction.?date/,/approval.?date/,/data.*pagamento/,/data.*receb/,/data.*transa/]);
+  COLS.venQtd      = colFind(vh,[/^qtd$/,/quantidade/,/quantity/,/^qty$/,/quantidade.*vendas/]);
   COLS.venProd     = colFind(vh,[/sales history product name/,/product.?name/,/nome.*produto/,/produto/,/product/]);
   COLS.venStatus   = colFind(vh,[/sales history transaction status/,/transaction.?status/,/^status$/,/status/,/situa/]);
   COLS.venValue    = bestColumn(vh,RAW.vendas,'vendasValue') || colFind(vh,[/^faturamento$/,/faturamento.*bruto/,/faturamento/,/^sales history transaction value$/,/^sales history transaction amount$/,/sales history.*transaction.*value/,/sales history.*transaction.*amount/,/transaction.*value/,/transaction.*amount/,/valor.*transa/,/valor.*receb/,/received.*value/,/paid.*amount/,/amount.*paid/,/gross.*value/,/gross.*amount/,/revenue/,/receita/,/valor.*l[ií]quido/,/valor/]);
@@ -1165,21 +1152,25 @@ function detectColumns(){
   console.log('%c[P3X] ═══ COLUNAS DETECTADAS ═══','color:#00953a;font-weight:bold');
   console.log('%c[P3X] META:','color:#3b8bff;font-weight:bold',{date:COLS.metaDate,camp:COLS.metaCamp,ad:COLS.metaAd,spend:COLS.metaSpend,impr:COLS.metaImpr,click:COLS.metaClick,pageView:COLS.metaPageView,checkout:COLS.metaCheckout,purch:COLS.metaPurch});
   console.log('%c[P3X] GOOGLE:','color:#e8a13c;font-weight:bold',{date:COLS.gooDate,camp:COLS.gooCamp,ad:COLS.gooAd,spend:COLS.gooSpend,impr:COLS.gooImpr,click:COLS.gooClick,conv:COLS.gooConv,pageView:COLS.gooPageView,checkout:COLS.gooCheckout,videoId:COLS.gooVideoId,permalink:COLS.gooPermalink,thumb:COLS.gooThumb});
-  console.log('%c[P3X] VENDAS:','color:#00953a;font-weight:bold',{date:COLS.venDate,dateBR:COLS.venDateBR,prod:COLS.venProd,status:COLS.venStatus,value:COLS.venValue,email:COLS.venEmail,phone:COLS.venPhone,txn:COLS.venTxnId,buyer:COLS.venBuyer,recurrency:COLS.venRecurrency,paymentMode:COLS.venPaymentMode});
+  console.log('%c[P3X] VENDAS:','color:#00953a;font-weight:bold',{date:COLS.venDate,dateBR:COLS.venDateBR,qtd:COLS.venQtd,prod:COLS.venProd,status:COLS.venStatus,value:COLS.venValue,email:COLS.venEmail,phone:COLS.venPhone,txn:COLS.venTxnId,buyer:COLS.venBuyer});
   console.log('[P3X] Cabeçalhos Meta:',mh);
   console.log('[P3X] Cabeçalhos Google:',gh);
   console.log('[P3X] Cabeçalhos Vendas:',vh);
 
   // Diagnóstico status vendas
   if(RAW.vendas.length){
-    const stCount={}; let gross=0,ok=0,uniq=0,parc=0;
+    const stCount={}; let gross=0,ok=0,uniq=0;
     RAW.vendas.forEach(r=>{
       const g=venStatusGroup(r[COLS.venStatus]); stCount[g]=(stCount[g]||0)+1;
-      if(venStatusOk(r)){ ok++; gross+=parseMoney(r[COLS.venValue]); if(isUniqueVenSale(r)) uniq++; else parc++; }
+      if(venStatusOk(r)){ ok++; gross+=parseMoney(r[COLS.venValue]); }
     });
+    // ✅ NOVO: contar qtd ao invés de parcelas
+    const vendas_ok = RAW.vendas.filter(r=>venStatusOk(r));
+    uniq = countUniqueSales(vendas_ok);
     console.log('[P3X] Status VENDAS (grupos):',stCount);
-    console.log('%c[P3X] RESUMO VENDAS (sem filtro data): paid='+ok+' linhas | vendas únicas='+uniq+' | parcelas ignoradas='+parc+' | faturamento='+money2(gross),'color:#00953a;font-weight:bold');
-    if(!COLS.venRecurrency) console.warn('[P3X] ⚠ Coluna de recorrência não detectada — usando dedupe por Transaction/Email + heurística de valor.');
+    console.log('%c[P3X] RESUMO VENDAS (sem filtro data): linhas_paid='+ok+' | vendas='+uniq+' | faturamento='+money2(gross),'color:#00953a;font-weight:bold');
+    if(COLS.venQtd) console.log('[P3X] ✅ Coluna qtd detectada: "'+COLS.venQtd+'" — somando quantidade de vendas');
+    if(!COLS.venQtd) console.log('[P3X] ⚠ Coluna qtd não detectada — contando linhas como vendas');
   }
   if(RAW.google.length){
     const gSums={invest:COLS.gooSpend?RAW.google.reduce((s,r)=>s+googleSpendValue(r),0):0,impr:COLS.gooImpr?columnSum(RAW.google,COLS.gooImpr,'num'):0,clicks:COLS.gooClick?columnSum(RAW.google,COLS.gooClick,'num'):0,conv:COLS.gooConv?columnSum(RAW.google,COLS.gooConv,'num'):0};
@@ -1362,30 +1353,24 @@ function filterGoogle(f){
     return true;
   });
 }
-// VENDAS: status fixo paid. Faturamento = todas as transações; Vendas = 1ª parcela/única.
+// VENDAS: status fixo paid. Faturamento = todas as transações; Vendas = soma da coluna qtd.
 function venPass(r){ return venStatusOk(r); }
 function filterVendasRevenue(f){
   return RAW.vendas.filter(r=>{ const d=venKpiDate(r); if(!d||d<f.from||d>f.to) return false; return venPass(r); });
 }
 function filterVendasSales(f){
-  const filtered = RAW.vendas.filter(r=>{ 
-    const d=venKpiDate(r); 
-    if(!d||d<f.from||d>f.to) return false; 
-    if(!isUniqueVenSale(r)) return false; 
-    return venPass(r); 
-  });
-  
-  // 🔴 DEBUG: log detalhado de quantas foram filtradas
-  console.log('%c[DEBUG] VENDAS FILTRADAS POR RECORRÊNCIA','color:#f2312c;font-weight:bold',{
-    total_inicial: RAW.vendas.filter(r=>venPass(r)).length,
-    dentro_do_periodo: RAW.vendas.filter(r=>{ const d=venKpiDate(r); return venPass(r) && d>=f.from && d<=f.to; }).length,
-    apos_dedupe: filtered.length,
-    percentual_mantido: ((filtered.length / Math.max(1, RAW.vendas.filter(r=>venPass(r)).length)) * 100).toFixed(1) + '%'
-  });
-  
-  return filtered;
+  return RAW.vendas.filter(r=>{ const d=venKpiDate(r); if(!d||d<f.from||d>f.to) return false; return venPass(r); });
 }
-function countUniqueSales(rows){ const seen=new Set(); rows.forEach(r=>seen.add(saleDedupeKey(r))); return seen.size; }
+// ✅ NOVA LÓGICA: somar a coluna qtd em vez de contar linhas únicas
+function countUniqueSales(rows){ 
+  if(!COLS.venQtd) return rows.length;  // Se não tem coluna qtd, conta linhas
+  let total = 0;
+  rows.forEach(r => {
+    const q = parseInt(r[COLS.venQtd] || 1);
+    total += (isNaN(q) ? 1 : Math.max(1, q));
+  });
+  return total;
+}
 
 // ═══ RENDER ═══
 function render(){
@@ -1641,18 +1626,6 @@ function initEvents(){
 // ═══ BOOT ═══
 document.addEventListener('DOMContentLoaded',async()=>{
   initLogin(); initDropdowns(); initEvents();
-  
-  // 🔴 DEBUG: setup
-  document.getElementById('skipRecurrencyDebug')?.addEventListener('change',(e)=>{
-    window.SKIP_RECURRENCY_FILTER = e.target.checked;
-    const msg = e.target.checked 
-      ? '✅ Dedupe DESABILITADO - clique em "Atualizar"' 
-      : '❌ Dedupe HABILITADO novamente';
-    const dbg = document.getElementById('debugOutput');
-    if(dbg) dbg.textContent = msg;
-    console.log('[DEBUG]',msg);
-  });
-  
   await loadData();
   setInterval(async()=>{ try{ await loadData(); }catch(e){console.warn('refresh:',e);} }, 30*60*1000);
 });
