@@ -536,7 +536,7 @@ body::before{
 
     <!-- TABLE -->
     <div class="section" id="table-sec">
-      <div class="section-head"><h2 class="section-title">Criativos / <em>Campanhas</em></h2><span class="section-tag">Meta + Google · vendas do próprio canal</span></div>
+      <div class="section-head"><h2 class="section-title">Criativos / <em>Campanhas</em></h2><span class="section-tag">Meta + Google · Google por Ad Name + Video ID</span></div>
       <div class="tbl-wrap">
         <table class="tbl">
           <thead><tr>
@@ -587,7 +587,7 @@ const COL_OVERRIDE = {
   metaPageView:'', metaCheckout:'', metaPurch:'', metaPurchVal:'', metaPermalink:'', metaThumb:'',
   // GOOGLE
   gooDate:'', gooCamp:'', gooAd:'', gooSpend:'', gooImpr:'', gooClick:'',
-  gooConv:'', gooConvVal:'', gooPageView:'', gooCheckout:'',
+  gooConv:'', gooConvVal:'', gooPageView:'', gooCheckout:'', gooVideoId:'', gooPermalink:'', gooThumb:'',
   // VENDAS
   venDate:'', venDateBR:'', venProd:'', venStatus:'', venValue:'', venEmail:'', venPhone:'',
   venTxnId:'', venBuyer:'', venRecurrency:'', venPaymentMode:''
@@ -612,6 +612,46 @@ function cleanUrl(v){
   if(/^www\./i.test(raw)) return 'https://'+raw.replace(/\s/g,'');
   return '';
 }
+function extractYouTubeVideoId(v){
+  if(!v && v!==0) return '';
+  const raw=String(v).replace(/&amp;/g,'&').trim();
+  if(!raw) return '';
+  let m=raw.match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([A-Za-z0-9_-]{6,20})/i);
+  if(m) return m[1].split(/[?&#/]/)[0];
+  m=raw.match(/[?&]v=([A-Za-z0-9_-]{6,20})/i);
+  if(m) return m[1].split(/[?&#/]/)[0];
+  // Quando a coluna vem só com o ID do vídeo (ex.: VIDEOID)
+  const compact=raw.replace(/[^A-Za-z0-9_-]/g,'');
+  if(/^[A-Za-z0-9_-]{6,20}$/.test(compact)) return compact;
+  m=raw.match(/\b([A-Za-z0-9_-]{8,20})\b/);
+  return m ? m[1] : '';
+}
+function youtubeWatchUrlFromId(id){
+  const vid=extractYouTubeVideoId(id);
+  return vid ? 'https://www.youtube.com/watch?v='+vid : '';
+}
+function youtubeThumbUrlFromId(id){
+  const vid=extractYouTubeVideoId(id);
+  return vid ? 'https://img.youtube.com/vi/'+vid+'/hqdefault.jpg' : '';
+}
+function googleAdName(r){
+  return String(colValue(r,COLS.gooAd) || colValue(r,COLS.gooCamp) || 'Sem nome').trim();
+}
+function googleFilterKeyName(r){
+  // Para Google, o filtro precisa seguir o criativo: Ad Name.
+  return googleAdName(r);
+}
+function googleVideoUrl(r){
+  // Para Google, o link do vídeo deve ser montado pelo Video ID.
+  const byId=youtubeWatchUrlFromId(colValue(r,COLS.gooVideoId));
+  if(byId) return byId;
+  return cleanUrl(colValue(r,COLS.gooPermalink));
+}
+function googleThumbUrl(r){
+  const direct=cleanUrl(colValue(r,COLS.gooThumb));
+  if(direct) return direct;
+  return youtubeThumbUrlFromId(colValue(r,COLS.gooVideoId));
+}
 
 // ═══ CSV PARSER ═══
 function parseCSV(text){
@@ -627,7 +667,7 @@ function parseCSV(text){
 function headerScore(row){
   const txt=(row||[]).map(c=>normCompact(c)).join('|');
   let score=0;
-  const terms=['date','data','dia','day','campaign','campanha','adname','anuncio','adgroup','grupodeanuncios','cost','custo','spend','gasto','investimento','impressions','impressoes','clicks','cliques','conversions','conversoes','faturamento','receita','revenue','permalink','permanentlink','thumbnail'];
+  const terms=['date','data','dia','day','campaign','campanha','adname','anuncio','adgroup','grupodeanuncios','cost','custo','spend','gasto','investimento','impressions','impressoes','clicks','cliques','conversions','conversoes','faturamento','receita','revenue','permalink','permanentlink','thumbnail','videoid','youtube','videourl'];
   terms.forEach(t=>{ if(txt.includes(t)) score++; });
   score += (row||[]).filter(c=>String(c||'').trim()).length>=3 ? 2 : 0;
   return score;
@@ -1058,7 +1098,7 @@ function detectColumns(){
   // ── GOOGLE ──
   COLS.gooDate     = colFind(gh,[/^dia$/,/^day$/,/^date$/,/^data$/,/reporting/,/per[ií]odo/,/period/,/dia/,/data/]) || bestDateColumn(gh,RAW.google);
   COLS.gooCamp     = colFind(gh,[/^campaign$/,/^campaign name$/,/nome da campanha/,/campaign.?name/,/^campanha$/,/campanha/,/campaign/]) || bestTextColumn(gh,RAW.google,['campaign','campanha']);
-  COLS.gooAd       = colFind(gh,[/^ad group$/,/^ad group name$/,/grupo de an[uú]ncios/,/ad.?group/,/^ad name$/,/nome do an[uú]ncio/,/ad.?name/,/an[uú]ncio/,/palavra.?chave/,/keyword/]);
+  COLS.gooAd       = colFind(gh,[/^ad name$/,/^adname$/,/nome do an[uú]ncio/,/^an[uú]ncio$/,/ad.?name/,/\bad\b.*\bname\b/,/^creative name$/,/creative.?name/,/^ad group$/,/^ad group name$/,/grupo de an[uú]ncios/,/ad.?group/,/palavra.?chave/,/keyword/]) || bestTextColumn(gh,RAW.google,['adname','ad name','anuncio','creative']);
   COLS.gooSpend    = bestColumn(gh,RAW.google,'googleSpend') || colFind(gh,[/^custo$/,/^cost$/,/^cost \(.+\)$/,/amount.?spent/,/valor usado/,/investimento/,/gasto/,/spend/,/despesa/,/media.?cost/,/\bcusto\b/,/\bcost\b/]);
   COLS.gooImpr     = bestColumn(gh,RAW.google,'googleImpr') || colFind(gh,[/^impress[õo]es$/,/^impressions?$/,/^impr\.?$/,/impression/,/impress/]);
   COLS.gooClick    = bestColumn(gh,RAW.google,'googleClick') || colFind(gh,[/^cliques$/,/^clicks?$/,/^intera[cç][õo]es$/,/cliques/,/clicks?/,/interac/]);
@@ -1066,6 +1106,9 @@ function detectColumns(){
   COLS.gooConvVal  = colFind(gh,[/valor.*convers/,/conversion.?value/,/conv.*value/,/receita/]);
   COLS.gooPageView = colFind(gh,[/visualiza[çc][aã]o de p[aá]gina/,/landing.?page.?view/,/page.?view/,/visualiza/]);
   COLS.gooCheckout = colFind(gh,[/in[ií]cio.*checkout/,/initiated.?checkout/,/checkout/,/in[ií]cio.*compra/]);
+  COLS.gooVideoId  = colFind(gh,[/^video id$/,/^videoid$/,/youtube.?video.?id/,/video.?id/,/^id do v[ií]deo$/,/id.*v[ií]deo/,/asset.?id/,/creative.?id/]);
+  COLS.gooPermalink= colFind(gh,[/youtube.?url/,/video.?url/,/url.*video/,/url.*v[ií]deo/,/permanent.?link.?url/,/permanent.?link/,/permanentlink/,/permenent.?link/,/parmenent.?link/,/permalink.?url/,/permalink/,/final.?url/]);
+  COLS.gooThumb    = colFind(gh,[/thumbnail.?url/,/thumbnail/,/thumb.?url/,/image.?url/,/imagem.?url/,/video.?thumbnail/,/youtube.?thumbnail/,/thumb/]);
 
   // ── VENDAS ──
   COLS.venDate     = colFind(vh,[/^sales history order date$/,/^purchase order date$/,/order.?date/,/purchase.?order.?date/,/purchase.?date/,/data.*venda/,/data.*compra/,/^date$/,/created/,/^data$/]);
@@ -1102,7 +1145,7 @@ function detectColumns(){
 
   console.log('%c[P3X] ═══ COLUNAS DETECTADAS ═══','color:#00953a;font-weight:bold');
   console.log('%c[P3X] META:','color:#3b8bff;font-weight:bold',{date:COLS.metaDate,camp:COLS.metaCamp,ad:COLS.metaAd,spend:COLS.metaSpend,impr:COLS.metaImpr,click:COLS.metaClick,pageView:COLS.metaPageView,checkout:COLS.metaCheckout,purch:COLS.metaPurch});
-  console.log('%c[P3X] GOOGLE:','color:#e8a13c;font-weight:bold',{date:COLS.gooDate,camp:COLS.gooCamp,ad:COLS.gooAd,spend:COLS.gooSpend,impr:COLS.gooImpr,click:COLS.gooClick,conv:COLS.gooConv,pageView:COLS.gooPageView,checkout:COLS.gooCheckout});
+  console.log('%c[P3X] GOOGLE:','color:#e8a13c;font-weight:bold',{date:COLS.gooDate,camp:COLS.gooCamp,ad:COLS.gooAd,spend:COLS.gooSpend,impr:COLS.gooImpr,click:COLS.gooClick,conv:COLS.gooConv,pageView:COLS.gooPageView,checkout:COLS.gooCheckout,videoId:COLS.gooVideoId,permalink:COLS.gooPermalink,thumb:COLS.gooThumb});
   console.log('%c[P3X] VENDAS:','color:#00953a;font-weight:bold',{date:COLS.venDate,dateBR:COLS.venDateBR,prod:COLS.venProd,status:COLS.venStatus,value:COLS.venValue,email:COLS.venEmail,phone:COLS.venPhone,txn:COLS.venTxnId,buyer:COLS.venBuyer,recurrency:COLS.venRecurrency,paymentMode:COLS.venPaymentMode});
   console.log('[P3X] Cabeçalhos Meta:',mh);
   console.log('[P3X] Cabeçalhos Google:',gh);
@@ -1217,7 +1260,7 @@ function initFilters(){
   // Campanhas combinadas
   const seen=new Set(); CAMPAIGNS=[];
   RAW.meta.forEach(r=>{ const n=COLS.metaCamp?String(r[COLS.metaCamp]||'').trim():''; if(n){ const k='meta::'+n; if(!seen.has(k)){ seen.add(k); CAMPAIGNS.push({platform:'meta',name:n,key:k}); } } });
-  RAW.google.forEach(r=>{ const n=COLS.gooCamp?String(colValue(r,COLS.gooCamp)||'').trim():''; if(n){ const k='google::'+n; if(!seen.has(k)){ seen.add(k); CAMPAIGNS.push({platform:'google',name:n,key:k}); } } });
+  RAW.google.forEach(r=>{ const n=googleFilterKeyName(r); if(n){ const k='google::'+n; if(!seen.has(k)){ seen.add(k); CAMPAIGNS.push({platform:'google',name:n,key:k}); } } });
   CAMPAIGNS.sort((a,b)=> a.platform.localeCompare(b.platform) || a.name.localeCompare(b.name,'pt-BR'));
   buildCampaignDropdown();
 }
@@ -1295,7 +1338,7 @@ function filterMeta(f){
 function filterGoogle(f){
   return RAW.google.filter(r=>{
     if(!passDateFilter(r,COLS.gooDate,f.from,f.to,'Google')) return false;
-    if(f.camps && !f.camps.has('google::'+String(colValue(r,COLS.gooCamp)||'').trim())) return false;
+    if(f.camps && !f.camps.has('google::'+googleFilterKeyName(r))) return false;
     return true;
   });
 }
@@ -1441,12 +1484,16 @@ function renderTable(meta,google){
     a.invest+=parseMoney(r[COLS.metaSpend]); a.impr+=num(r[COLS.metaImpr]); a.clicks+=num(r[COLS.metaClick]); a.vendas+=num(r[COLS.metaPurch]);
   });
   Object.values(metaBy).forEach(m=>{ m.ctr=m.impr>0?m.clicks/m.impr:0; m.cpc=m.clicks>0?m.invest/m.clicks:0; rows.push(m); });
-  // Google agrupado por campanha (ou grupo de anúncios)
+  // Google agrupado por Ad Name. O permanent link é montado pelo Video ID:
+  // https://www.youtube.com/watch?v=VIDEOID
   const gooBy={};
   google.forEach(r=>{
-    const name=(colValue(r,COLS.gooCamp)||colValue(r,COLS.gooAd)||'Sem nome');
-    const key=String(name).toUpperCase();
-    const a=gooBy[key]=gooBy[key]||{platform:'google',code:key,name,invest:0,impr:0,clicks:0,vendas:0,thumb:'',url:''};
+    const name=googleAdName(r);
+    const key=String(name||'Sem nome').toUpperCase();
+    const campaign=String(colValue(r,COLS.gooCamp)||'').trim();
+    const a=gooBy[key]=gooBy[key]||{platform:'google',code:key,name,invest:0,impr:0,clicks:0,vendas:0,thumb:'',url:'',campaign};
+    if(!a.url) a.url=googleVideoUrl(r);
+    if(!a.thumb) a.thumb=googleThumbUrl(r);
     a.invest+=googleSpendValue(r); a.impr+=num(colValue(r,COLS.gooImpr)); a.clicks+=num(colValue(r,COLS.gooClick)); a.vendas+=num(colValue(r,COLS.gooConv));
   });
   Object.values(gooBy).forEach(m=>{ m.ctr=m.impr>0?m.clicks/m.impr:0; m.cpc=m.clicks>0?m.invest/m.clicks:0; rows.push(m); });
