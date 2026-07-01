@@ -421,6 +421,14 @@ body::before{
       <div class="f-spacer"></div>
       <div class="f-actions">
         <div class="ref-status" id="refStatus"><span class="pulse"></span><span id="refTxt">Carregado</span></div>
+        <!-- DEBUG PANEL -->
+        <div style="margin-top:8px;padding:8px;background:#0d100e;border:1px solid #223122;border-radius:4px;font-size:11px;font-family:monospace;">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;color:#a2a49d;">
+            <input type="checkbox" id="skipRecurrencyDebug" style="cursor:pointer;"> 
+            <span>DESABILITAR DEDUPE (DEBUG)</span>
+          </label>
+          <div id="debugOutput" style="margin-top:4px;color:#00ff78;max-height:80px;overflow-y:auto;"></div>
+        </div>
         <button class="btn-ref" id="btnRefresh">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M3 12a9 9 0 0 1 15.5-6.3M21 12a9 9 0 0 1-15.5 6.3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M16 5h5V0M8 19H3v5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
           Atualizar
@@ -1046,6 +1054,12 @@ function rowInstallmentClue(r){
   return null;
 }
 function isUniqueVenSale(r){
+  // 🔴 DEBUG MODE: desabilitar dedupe se SKIP_RECURRENCY_FILTER = true
+  if(window.SKIP_RECURRENCY_FILTER){
+    console.log('[DEBUG] Dedupe desabilitado - contando como venda única');
+    return true;
+  }
+  
   if(isSubscriptionPaymentMode(getPaymentModeValue(r))) return true;
   const val=getRecurrencyValue(r);
   if(val!==null&&val!==undefined) return isFirstRecurrencyValue(val);
@@ -1354,7 +1368,22 @@ function filterVendasRevenue(f){
   return RAW.vendas.filter(r=>{ const d=venKpiDate(r); if(!d||d<f.from||d>f.to) return false; return venPass(r); });
 }
 function filterVendasSales(f){
-  return RAW.vendas.filter(r=>{ const d=venKpiDate(r); if(!d||d<f.from||d>f.to) return false; if(!isUniqueVenSale(r)) return false; return venPass(r); });
+  const filtered = RAW.vendas.filter(r=>{ 
+    const d=venKpiDate(r); 
+    if(!d||d<f.from||d>f.to) return false; 
+    if(!isUniqueVenSale(r)) return false; 
+    return venPass(r); 
+  });
+  
+  // 🔴 DEBUG: log detalhado de quantas foram filtradas
+  console.log('%c[DEBUG] VENDAS FILTRADAS POR RECORRÊNCIA','color:#f2312c;font-weight:bold',{
+    total_inicial: RAW.vendas.filter(r=>venPass(r)).length,
+    dentro_do_periodo: RAW.vendas.filter(r=>{ const d=venKpiDate(r); return venPass(r) && d>=f.from && d<=f.to; }).length,
+    apos_dedupe: filtered.length,
+    percentual_mantido: ((filtered.length / Math.max(1, RAW.vendas.filter(r=>venPass(r)).length)) * 100).toFixed(1) + '%'
+  });
+  
+  return filtered;
 }
 function countUniqueSales(rows){ const seen=new Set(); rows.forEach(r=>seen.add(saleDedupeKey(r))); return seen.size; }
 
@@ -1612,6 +1641,18 @@ function initEvents(){
 // ═══ BOOT ═══
 document.addEventListener('DOMContentLoaded',async()=>{
   initLogin(); initDropdowns(); initEvents();
+  
+  // 🔴 DEBUG: setup
+  document.getElementById('skipRecurrencyDebug')?.addEventListener('change',(e)=>{
+    window.SKIP_RECURRENCY_FILTER = e.target.checked;
+    const msg = e.target.checked 
+      ? '✅ Dedupe DESABILITADO - clique em "Atualizar"' 
+      : '❌ Dedupe HABILITADO novamente';
+    const dbg = document.getElementById('debugOutput');
+    if(dbg) dbg.textContent = msg;
+    console.log('[DEBUG]',msg);
+  });
+  
   await loadData();
   setInterval(async()=>{ try{ await loadData(); }catch(e){console.warn('refresh:',e);} }, 30*60*1000);
 });
