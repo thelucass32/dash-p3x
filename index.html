@@ -536,7 +536,7 @@ body::before{
 
     <!-- TABLE -->
     <div class="section" id="table-sec">
-      <div class="section-head"><h2 class="section-title">Criativos / <em>Campanhas</em></h2><span class="section-tag">Meta + Google · Google por Ad Name + Video ID</span></div>
+      <div class="section-head"><h2 class="section-title">Criativos / <em>Campanhas</em></h2><span class="section-tag">Filtro por campanha · Google por Ad Name + Video ID</span></div>
       <div class="tbl-wrap">
         <table class="tbl">
           <thead><tr>
@@ -637,9 +637,14 @@ function youtubeThumbUrlFromId(id){
 function googleAdName(r){
   return String(colValue(r,COLS.gooAd) || colValue(r,COLS.gooCamp) || 'Sem nome').trim();
 }
+function googleCampaignName(r){
+  // Para Google, o dropdown/filtro de Campanhas deve usar SOMENTE o nome da campanha.
+  // A tabela continua agrupando os criativos por Ad Name e usando Video ID para link/thumbnail.
+  const camp=String(colValue(r,COLS.gooCamp) || '').trim();
+  return camp || 'Sem campanha';
+}
 function googleFilterKeyName(r){
-  // Para Google, o filtro precisa seguir o criativo: Ad Name.
-  return googleAdName(r);
+  return googleCampaignName(r);
 }
 function googleVideoUrl(r){
   // Para Google, o link do vídeo deve ser montado pelo Video ID.
@@ -1262,6 +1267,7 @@ function initFilters(){
   RAW.meta.forEach(r=>{ const n=COLS.metaCamp?String(r[COLS.metaCamp]||'').trim():''; if(n){ const k='meta::'+n; if(!seen.has(k)){ seen.add(k); CAMPAIGNS.push({platform:'meta',name:n,key:k}); } } });
   RAW.google.forEach(r=>{ const n=googleFilterKeyName(r); if(n){ const k='google::'+n; if(!seen.has(k)){ seen.add(k); CAMPAIGNS.push({platform:'google',name:n,key:k}); } } });
   CAMPAIGNS.sort((a,b)=> a.platform.localeCompare(b.platform) || a.name.localeCompare(b.name,'pt-BR'));
+  console.log('[P3X] Filtro de campanhas:', CAMPAIGNS.map(c=>c.platform+'::'+c.name));
   buildCampaignDropdown();
 }
 function buildCampaignDropdown(){
