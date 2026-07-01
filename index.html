@@ -156,7 +156,7 @@ canvas{width:100%!important;}
 .tbl th:first-child{text-align:left;}
 .tbl td{padding:11px 16px;border-bottom:1px solid var(--line);color:var(--off);text-align:right;font-family:monospace;font-size:11.5px;white-space:nowrap;}
 .tbl td:first-child{text-align:left;}
-.tbl td.cr-name{text-align:left;font-family:var(--grotesk);font-size:12px;max-width:280px;overflow:hidden;text-overflow:ellipsis;}
+.tbl td.cr-name{text-align:left;font-family:var(--grotesk);font-size:12px;max-width:540px;overflow:visible;text-overflow:clip;white-space:normal;}
 .tbl tbody tr:last-child td{border-bottom:none;}
 .tbl tbody tr:hover td{background:var(--bg-2);}
 .tbl tfoot td{padding:12px 16px;border-top:2px solid var(--line);font-family:monospace;font-size:11.5px;color:var(--off);text-align:right;background:var(--bg-2);font-weight:600;}
@@ -168,6 +168,14 @@ canvas{width:100%!important;}
 .plat-pill{display:inline-flex;padding:2px 7px;border-radius:6px;font-size:9px;letter-spacing:.1em;text-transform:uppercase;font-weight:500;}
 .plat-pill.meta{background:rgba(59,139,255,.16);color:var(--blue);}
 .plat-pill.google{background:rgba(232,161,60,.16);color:var(--amber);}
+.creative-cell{display:flex;align-items:center;gap:10px;min-width:300px;max-width:520px;}
+.creative-thumb-link{display:inline-flex;flex:0 0 auto;border-radius:9px;outline:none;}
+.creative-thumb{width:48px;height:48px;object-fit:cover;border-radius:9px;border:1px solid var(--line);background:var(--bg-3);box-shadow:0 6px 18px rgba(0,0,0,.28);}
+.creative-main{min-width:0;display:flex;flex-direction:column;gap:3px;}
+.creative-code{color:var(--off);font-weight:600;font-family:var(--grotesk);font-size:12px;line-height:1.2;}
+.creative-name{color:var(--gray-2);font-size:10px;line-height:1.25;white-space:normal;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;}
+.creative-link{color:var(--accent);font-size:10px;text-decoration:none;letter-spacing:.04em;}
+.creative-link:hover{text-decoration:underline;}
 
 .empty{padding:48px;text-align:center;color:var(--gray-2);font-size:13px;}
 .empty .big{font-family:var(--display);font-size:40px;color:var(--bg-3);margin-bottom:12px;}
@@ -595,6 +603,15 @@ let SORT={key:'invest',dir:'desc'};
 let CAMPAIGNS=[]; // [{platform,name,key}]
 let VEN_PRODUCT_STATS={};
 const escAttr = s => String(s).replace(/"/g,'&quot;');
+const escHtml = s => String(s ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+function cleanUrl(v){
+  if(!v) return '';
+  const raw=String(v).replace(/&amp;/g,'&').trim();
+  const m=raw.match(/https?:\/\/[^\s"'<>),]+/i);
+  if(m) return m[0];
+  if(/^www\./i.test(raw)) return 'https://'+raw.replace(/\s/g,'');
+  return '';
+}
 
 // ═══ CSV PARSER ═══
 function parseCSV(text){
@@ -607,11 +624,36 @@ function parseCSV(text){
   if(cur.length||row.length){row.push(cur);rows.push(row);}
   return rows.filter(r=>r.some(c=>c&&c.length));
 }
+function headerScore(row){
+  const txt=(row||[]).map(c=>normCompact(c)).join('|');
+  let score=0;
+  const terms=['date','data','dia','day','campaign','campanha','adname','anuncio','adgroup','grupodeanuncios','cost','custo','spend','gasto','investimento','impressions','impressoes','clicks','cliques','conversions','conversoes','faturamento','receita','revenue','permalink','permanentlink','thumbnail'];
+  terms.forEach(t=>{ if(txt.includes(t)) score++; });
+  score += (row||[]).filter(c=>String(c||'').trim()).length>=3 ? 2 : 0;
+  return score;
+}
+function uniqueHeaders(headers){
+  const seen={};
+  return headers.map((h,i)=>{
+    let name=String(h||'').trim() || ('col_'+(i+1));
+    if(seen[name]){ seen[name]++; name=name+'_'+seen[name]; }
+    else seen[name]=1;
+    return name;
+  });
+}
 function csvToObjects(text){
   const rows=parseCSV(text);
   if(!rows.length) return [];
-  const headers=rows[0].map(h=>h.trim());
-  return rows.slice(1).map(row=>{ const o={}; headers.forEach((h,i)=>{ o[h]=row[i]?row[i].trim():''; }); return o; });
+  let headerIdx=0,best=-1;
+  const scan=Math.min(rows.length,10);
+  for(let i=0;i<scan;i++){
+    const sc=headerScore(rows[i]);
+    if(sc>best){ best=sc; headerIdx=i; }
+  }
+  // Proteção para CSVs exportados com linha de título antes do cabeçalho real.
+  if(best<3) headerIdx=0;
+  const headers=uniqueHeaders(rows[headerIdx].map(h=>h.trim()));
+  return rows.slice(headerIdx+1).map(row=>{ const o={}; headers.forEach((h,i)=>{ o[h]=row[i]?row[i].trim():''; }); return o; });
 }
 function isBlankRowObj(row){ return !row || Object.values(row).every(v=>String(v||'').trim()===''); }
 function cleanRows(rows,label){
@@ -700,10 +742,25 @@ const money0 = n => 'R$ '+fmtN(n);
 const money2 = n => 'R$ '+fmtM(n);
 
 function parseDate(s){
-  if(!s) return null; s=String(s).trim();
-  let m=s.match(/^(\d{4})-(\d{2})-(\d{2})/); if(m) return m[1]+'-'+m[2]+'-'+m[3];
+  if(!s && s!==0) return null;
+  if(s instanceof Date && !isNaN(s)) return toISO(s);
+  s=String(s).trim();
+  if(!s) return null;
+  let m=s.match(/^Date\((\d{4}),(\d{1,2}),(\d{1,2})/); // GViz Date(2026,5,30)
+  if(m) return m[1]+'-'+String(Number(m[2])+1).padStart(2,'0')+'-'+String(Number(m[3])).padStart(2,'0');
+  m=s.match(/^(\d{4})-(\d{2})-(\d{2})/); if(m) return m[1]+'-'+m[2]+'-'+m[3];
+  m=s.match(/^(\d{4})(\d{2})(\d{2})$/); if(m) return m[1]+'-'+m[2]+'-'+m[3];
   m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/); if(m) return m[3]+'-'+m[2].padStart(2,'0')+'-'+m[1].padStart(2,'0');
+  m=s.match(/^(\d{1,2})-(\d{1,2})-(\d{4})/); if(m) return m[3]+'-'+m[2].padStart(2,'0')+'-'+m[1].padStart(2,'0');
   m=s.match(/^(\d{4})\/(\d{2})\/(\d{2})/); if(m) return m[1]+'-'+m[2]+'-'+m[3];
+  // Datas seriadas do Google/Excel (ex.: 45474)
+  if(/^\d{5}(\.\d+)?$/.test(s)){
+    const serial=parseFloat(s);
+    if(serial>30000 && serial<80000){ const d=new Date(Date.UTC(1899,11,30)); d.setUTCDate(d.getUTCDate()+Math.floor(serial)); return d.toISOString().slice(0,10); }
+  }
+  // Formatos em inglês comuns do Google Ads: Jun 30, 2026 / June 30 2026
+  const parsed=new Date(s.replace(/\s+at\s+/i,' '));
+  if(!isNaN(parsed)) return toISO(parsed);
   return null;
 }
 function parseLocaleNumber(value){
@@ -796,6 +853,52 @@ function bestColumn(headers, rows, kind){
   });
   candidates.sort((a,b)=> (b.score-a.score) || (Math.abs(b.sum)-Math.abs(a.sum)));
   return candidates.length?candidates[0].h:null;
+}
+function bestDateColumn(headers, rows){
+  if(!headers||!headers.length) return null;
+  let best=null,bestScore=-1;
+  headers.forEach(h=>{
+    const c=normCompact(h), sp=normSpaced(h);
+    let score=0;
+    if(/^(date|data|day|dia)$/.test(c)) score+=120;
+    else if(hasAny(c,['date','data','day','dia','reporting','periodo','period'])) score+=60;
+    if(hasAny(c,['status','cost','custo','click','clique','impress','conversion','convers','valor','value','campaign','campanha','anuncio','adgroup'])) score-=80;
+    let parsed=0,filled=0;
+    (rows||[]).slice(0,80).forEach(r=>{ const v=r[h]; if(String(v||'').trim()){ filled++; if(parseDate(v)) parsed++; } });
+    if(parsed>0) score+=parsed*8 + Math.round((parsed/Math.max(1,filled))*50);
+    if(score>bestScore){ bestScore=score; best=h; }
+  });
+  return bestScore>30?best:null;
+}
+function bestTextColumn(headers, rows, preferred){
+  if(!headers||!headers.length) return null;
+  const pref=preferred||[];
+  let best=null,bestScore=-1;
+  headers.forEach(h=>{
+    const c=normCompact(h);
+    let score=0;
+    pref.forEach(p=>{ if(c.includes(p)) score+=80; });
+    if(hasAny(c,['campaign','campanha','adgroup','grupodeanuncios','anuncio','adname','keyword','palavrachave'])) score+=40;
+    if(hasAny(c,['date','data','dia','day','cost','custo','click','clique','impress','conversion','convers','ctr','cpc','cpm','valor','value','status'])) score-=70;
+    let filled=0,texty=0;
+    (rows||[]).slice(0,80).forEach(r=>{ const v=String(r[h]||'').trim(); if(v){ filled++; if(/[A-Za-zÀ-ÿ]/.test(v) && !parseDate(v)) texty++; } });
+    if(filled) score+=Math.round((texty/filled)*30);
+    if(score>bestScore){ bestScore=score; best=h; }
+  });
+  return bestScore>20?best:null;
+}
+function colValue(r,col){ return col ? r[col] : ''; }
+function moneyFromColumn(r,col){
+  let v=parseMoney(colValue(r,col));
+  if(col && /micros|micro/.test(normCompact(col))) v=v/1000000;
+  return v;
+}
+function googleSpendValue(r){ return moneyFromColumn(r,COLS.gooSpend); }
+function passDateFilter(r,col,from,to,source){
+  if(!col) return true; // se a coluna de data não foi detectada, não zera a fonte inteira
+  const d=parseDate(r[col]);
+  if(!d) return true; // se a data veio em formato estranho, mantém a linha e avisa no console
+  return d>=from && d<=to;
 }
 function normPhone(p){ if(!p) return ''; return String(p).replace(/\D/g,'').slice(-9); }
 function setText(id,v){ const e=document.getElementById(id); if(e) e.textContent=v; }
@@ -949,17 +1052,17 @@ function detectColumns(){
   COLS.metaCheckout= colFind(mh,[/action.?omni.?initiated.?checkout/,/omni.?initiated.?checkout/,/initiated.?checkout/,/in[ií]cio.*checkout/,/checkout.?initiat/,/add.?to.?cart/,/checkout/]);
   COLS.metaPurch   = colFind(mh,[/^action omni purchase$/,/action.?omni.?purchase/,/compras/,/^purchase/,/purchase/,/^vendas/,/conversões de compra/,/convers/]);
   COLS.metaPurchVal= colFind(mh,[/valor de convers[aã]o.*compra/,/purchase.*conversion.?value/,/valor.*compra/,/conversion.?value/,/receita/]);
-  COLS.metaPermalink=colFind(mh,[/instagram.?permalink.?url/,/instagram.?permalink/,/permalink.?url/,/permalink/]);
-  COLS.metaThumb   = colFind(mh,[/thumbnail.?url/,/thumbnail/,/image.?url/,/\bthumb\b/]);
+  COLS.metaPermalink=colFind(mh,[/instagram.?permalink.?url/,/instagram.?permalink/,/permanent.?link.?url/,/permanent.?link/,/permanentlink/,/permenent.?link/,/parmenent.?link/,/permalink.?url/,/permalink/,/post.?url/,/url.*post/,/link.*post/]);
+  COLS.metaThumb   = colFind(mh,[/thumbnail.?url/,/thumbnail/,/thumb.?url/,/image.?url/,/imagem.?url/,/creative.?image/,/ad.?image/,/\bthumb\b/,/imagem/]);
 
   // ── GOOGLE ──
-  COLS.gooDate     = colFind(gh,[/^dia$/,/^day$/,/^date$/,/^data$/,/reporting/,/dia/,/data/]);
-  COLS.gooCamp     = colFind(gh,[/nome da campanha/,/campaign.?name/,/^campanha$/,/campaign/,/campanha/]);
-  COLS.gooAd       = colFind(gh,[/grupo de an[uú]ncios/,/ad.?group/,/nome do an[uú]ncio/,/ad.?name/,/an[uú]ncio/,/palavra.?chave/,/keyword/]);
-  COLS.gooSpend    = bestColumn(gh,RAW.google,'googleSpend') || colFind(gh,[/^custo$/,/^cost$/,/amount.?spent/,/valor usado/,/investimento/,/gasto/,/spend/,/\bcusto\b/,/\bcost\b/]);
-  COLS.gooImpr     = bestColumn(gh,RAW.google,'googleImpr') || colFind(gh,[/^impress[õo]es$/,/^impressions?$/,/impress/,/^impr\.?$/]);
-  COLS.gooClick    = bestColumn(gh,RAW.google,'googleClick') || colFind(gh,[/^cliques$/,/^clicks?$/,/cliques/,/clicks?/,/interac/]);
-  COLS.gooConv     = bestColumn(gh,RAW.google,'googleConv') || colFind(gh,[/^convers[õo]es$/,/^conversions?$/,/conversõ/,/conversion/,/\bconv\.?\b/,/convers/]);
+  COLS.gooDate     = colFind(gh,[/^dia$/,/^day$/,/^date$/,/^data$/,/reporting/,/per[ií]odo/,/period/,/dia/,/data/]) || bestDateColumn(gh,RAW.google);
+  COLS.gooCamp     = colFind(gh,[/^campaign$/,/^campaign name$/,/nome da campanha/,/campaign.?name/,/^campanha$/,/campanha/,/campaign/]) || bestTextColumn(gh,RAW.google,['campaign','campanha']);
+  COLS.gooAd       = colFind(gh,[/^ad group$/,/^ad group name$/,/grupo de an[uú]ncios/,/ad.?group/,/^ad name$/,/nome do an[uú]ncio/,/ad.?name/,/an[uú]ncio/,/palavra.?chave/,/keyword/]);
+  COLS.gooSpend    = bestColumn(gh,RAW.google,'googleSpend') || colFind(gh,[/^custo$/,/^cost$/,/^cost \(.+\)$/,/amount.?spent/,/valor usado/,/investimento/,/gasto/,/spend/,/despesa/,/media.?cost/,/\bcusto\b/,/\bcost\b/]);
+  COLS.gooImpr     = bestColumn(gh,RAW.google,'googleImpr') || colFind(gh,[/^impress[õo]es$/,/^impressions?$/,/^impr\.?$/,/impression/,/impress/]);
+  COLS.gooClick    = bestColumn(gh,RAW.google,'googleClick') || colFind(gh,[/^cliques$/,/^clicks?$/,/^intera[cç][õo]es$/,/cliques/,/clicks?/,/interac/]);
+  COLS.gooConv     = bestColumn(gh,RAW.google,'googleConv') || colFind(gh,[/^convers[õo]es$/,/^conversions?$/,/^conv\.?$/,/compras/,/purchase/,/resultados/,/results/,/conversõ/,/conversion/,/\bconv\.?\b/,/convers/]);
   COLS.gooConvVal  = colFind(gh,[/valor.*convers/,/conversion.?value/,/conv.*value/,/receita/]);
   COLS.gooPageView = colFind(gh,[/visualiza[çc][aã]o de p[aá]gina/,/landing.?page.?view/,/page.?view/,/visualiza/]);
   COLS.gooCheckout = colFind(gh,[/in[ií]cio.*checkout/,/initiated.?checkout/,/checkout/,/in[ií]cio.*compra/]);
@@ -1016,7 +1119,15 @@ function detectColumns(){
     console.log('%c[P3X] RESUMO VENDAS (sem filtro data): paid='+ok+' linhas | vendas únicas='+uniq+' | parcelas ignoradas='+parc+' | faturamento='+money2(gross),'color:#00953a;font-weight:bold');
     if(!COLS.venRecurrency) console.warn('[P3X] ⚠ Coluna de recorrência não detectada — usando dedupe por Transaction/Email + heurística de valor.');
   }
-  if(!COLS.gooSpend) console.warn('[P3X] ⚠ Custo do Google não detectado — investimento Google entrará como 0. Me manda o cabeçalho.');
+  if(RAW.google.length){
+    const gSums={invest:COLS.gooSpend?RAW.google.reduce((s,r)=>s+googleSpendValue(r),0):0,impr:COLS.gooImpr?columnSum(RAW.google,COLS.gooImpr,'num'):0,clicks:COLS.gooClick?columnSum(RAW.google,COLS.gooClick,'num'):0,conv:COLS.gooConv?columnSum(RAW.google,COLS.gooConv,'num'):0};
+    console.log('%c[P3X] RESUMO GOOGLE (sem filtro data): '+JSON.stringify(gSums),'color:#e8a13c;font-weight:bold');
+    if(COLS.gooDate){
+      const parsed=RAW.google.slice(0,50).filter(r=>parseDate(r[COLS.gooDate])).length;
+      if(parsed===0) console.warn('[P3X] ⚠ Google: coluna de data detectada, mas o formato não foi reconhecido. As linhas não serão zeradas por data. Coluna:', COLS.gooDate);
+    }
+  }
+  if(!COLS.gooSpend) console.warn('[P3X] ⚠ Custo do Google não detectado — investimento Google entrará como 0. Cabeçalhos lidos:',gh);
 }
 
 // ═══ LOAD ═══
@@ -1106,7 +1217,7 @@ function initFilters(){
   // Campanhas combinadas
   const seen=new Set(); CAMPAIGNS=[];
   RAW.meta.forEach(r=>{ const n=COLS.metaCamp?String(r[COLS.metaCamp]||'').trim():''; if(n){ const k='meta::'+n; if(!seen.has(k)){ seen.add(k); CAMPAIGNS.push({platform:'meta',name:n,key:k}); } } });
-  RAW.google.forEach(r=>{ const n=COLS.gooCamp?String(r[COLS.gooCamp]||'').trim():''; if(n){ const k='google::'+n; if(!seen.has(k)){ seen.add(k); CAMPAIGNS.push({platform:'google',name:n,key:k}); } } });
+  RAW.google.forEach(r=>{ const n=COLS.gooCamp?String(colValue(r,COLS.gooCamp)||'').trim():''; if(n){ const k='google::'+n; if(!seen.has(k)){ seen.add(k); CAMPAIGNS.push({platform:'google',name:n,key:k}); } } });
   CAMPAIGNS.sort((a,b)=> a.platform.localeCompare(b.platform) || a.name.localeCompare(b.name,'pt-BR'));
   buildCampaignDropdown();
 }
@@ -1183,8 +1294,8 @@ function filterMeta(f){
 }
 function filterGoogle(f){
   return RAW.google.filter(r=>{
-    const d=parseDate(r[COLS.gooDate]); if(!d||d<f.from||d>f.to) return false;
-    if(f.camps && !f.camps.has('google::'+String(r[COLS.gooCamp]||'').trim())) return false;
+    if(!passDateFilter(r,COLS.gooDate,f.from,f.to,'Google')) return false;
+    if(f.camps && !f.camps.has('google::'+String(colValue(r,COLS.gooCamp)||'').trim())) return false;
     return true;
   });
 }
@@ -1218,12 +1329,12 @@ function render(){
     const d=parseDate(r[COLS.metaDate]); if(d){ (byDay[d]=byDay[d]||{invest:0,bruto:0,vendas:0}).invest+=sp; }
   });
   google.forEach(r=>{
-    const sp=parseMoney(r[COLS.gooSpend]);
-    G.invest+=sp; G.impr+=num(r[COLS.gooImpr]); G.clicks+=num(r[COLS.gooClick]);
-    if(COLS.gooPageView) G.pviews+=num(r[COLS.gooPageView]);
-    if(COLS.gooCheckout) G.checkout+=num(r[COLS.gooCheckout]);
-    G.conv+=num(r[COLS.gooConv]);
-    const d=parseDate(r[COLS.gooDate]); if(d){ (byDay[d]=byDay[d]||{invest:0,bruto:0,vendas:0}).invest+=sp; }
+    const sp=googleSpendValue(r);
+    G.invest+=sp; G.impr+=num(colValue(r,COLS.gooImpr)); G.clicks+=num(colValue(r,COLS.gooClick));
+    if(COLS.gooPageView) G.pviews+=num(colValue(r,COLS.gooPageView));
+    if(COLS.gooCheckout) G.checkout+=num(colValue(r,COLS.gooCheckout));
+    G.conv+=num(colValue(r,COLS.gooConv));
+    const d=parseDate(colValue(r,COLS.gooDate)); if(d){ (byDay[d]=byDay[d]||{invest:0,bruto:0,vendas:0}).invest+=sp; }
   });
 
   // Combinado
@@ -1324,17 +1435,19 @@ function renderTable(meta,google){
   meta.forEach(r=>{
     const fullName=(r[COLS.metaAd]||r[COLS.metaCamp]||'Sem nome');
     const code=extractCode(fullName)||fullName.toUpperCase();
-    const a=metaBy[code]=metaBy[code]||{platform:'meta',code,name:fullName,invest:0,impr:0,clicks:0,vendas:0};
+    const a=metaBy[code]=metaBy[code]||{platform:'meta',code,name:fullName,invest:0,impr:0,clicks:0,vendas:0,thumb:'',url:''};
+    if(!a.thumb) a.thumb=cleanUrl(r[COLS.metaThumb]);
+    if(!a.url) a.url=cleanUrl(r[COLS.metaPermalink]);
     a.invest+=parseMoney(r[COLS.metaSpend]); a.impr+=num(r[COLS.metaImpr]); a.clicks+=num(r[COLS.metaClick]); a.vendas+=num(r[COLS.metaPurch]);
   });
   Object.values(metaBy).forEach(m=>{ m.ctr=m.impr>0?m.clicks/m.impr:0; m.cpc=m.clicks>0?m.invest/m.clicks:0; rows.push(m); });
   // Google agrupado por campanha (ou grupo de anúncios)
   const gooBy={};
   google.forEach(r=>{
-    const name=(r[COLS.gooCamp]||r[COLS.gooAd]||'Sem nome');
-    const key=name.toUpperCase();
-    const a=gooBy[key]=gooBy[key]||{platform:'google',code:key,name,invest:0,impr:0,clicks:0,vendas:0};
-    a.invest+=parseMoney(r[COLS.gooSpend]); a.impr+=num(r[COLS.gooImpr]); a.clicks+=num(r[COLS.gooClick]); a.vendas+=num(r[COLS.gooConv]);
+    const name=(colValue(r,COLS.gooCamp)||colValue(r,COLS.gooAd)||'Sem nome');
+    const key=String(name).toUpperCase();
+    const a=gooBy[key]=gooBy[key]||{platform:'google',code:key,name,invest:0,impr:0,clicks:0,vendas:0,thumb:'',url:''};
+    a.invest+=googleSpendValue(r); a.impr+=num(colValue(r,COLS.gooImpr)); a.clicks+=num(colValue(r,COLS.gooClick)); a.vendas+=num(colValue(r,COLS.gooConv));
   });
   Object.values(gooBy).forEach(m=>{ m.ctr=m.impr>0?m.clicks/m.impr:0; m.cpc=m.clicks>0?m.invest/m.clicks:0; rows.push(m); });
 
@@ -1343,6 +1456,15 @@ function renderTable(meta,google){
   rows.forEach(m=>{ tI+=m.invest;tImp+=m.impr;tC+=m.clicks;tV+=m.vendas; });
   TABLE_TOTALS={invest:tI,impr:tImp,clicks:tC,ctr:tImp>0?tC/tImp:0,cpc:tC>0?tI/tC:0,vendas:tV};
   paintTable();
+}
+function renderCreativeLabel(m){
+  const code=escHtml(m.code||'—');
+  const name=escHtml(m.name||'');
+  const url=cleanUrl(m.url);
+  const thumb=cleanUrl(m.thumb);
+  const thumbHtml=thumb ? '<a class="creative-thumb-link" href="'+escAttr(url||thumb)+'" target="_blank" rel="noopener noreferrer"><img class="creative-thumb" src="'+escAttr(thumb)+'" alt="Thumbnail do criativo" loading="lazy" onerror="this.closest(\'a\').style.display=\'none\'"></a>' : '';
+  const openHtml=url ? '<a class="creative-link" href="'+escAttr(url)+'" target="_blank" rel="noopener noreferrer">Abrir permanent link ↗</a>' : '';
+  return '<div class="creative-cell">'+thumbHtml+'<div class="creative-main"><span class="creative-code">'+code+'</span>'+(name&&name!==code?' <span class="creative-name">'+name+'</span>':'')+openHtml+'</div></div>';
 }
 function paintTable(){
   const body=document.getElementById('tblCreativos'), foot=document.getElementById('tblFoot');
@@ -1354,7 +1476,7 @@ function paintTable(){
   });
   body.innerHTML=sorted.map(m=>{
     const pill='<span class="plat-pill '+m.platform+'">'+(m.platform==='meta'?'Meta':'Google')+'</span>';
-    const label='<strong style="color:var(--off)">'+m.code+'</strong>'+(m.name!==m.code?' <span style="color:var(--gray-2);font-size:10px">'+m.name+'</span>':'');
+    const label=renderCreativeLabel(m);
     return '<tr>'+
       '<td>'+pill+'</td>'+
       '<td class="cr-name" title="'+escAttr(m.name)+'">'+label+'</td>'+
