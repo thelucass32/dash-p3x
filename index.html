@@ -151,7 +151,7 @@ canvas{width:100%!important;}
 
 /* TABLE */
 .tbl-wrap{background:var(--bg-1);border:1px solid var(--line);border-radius:var(--r15);overflow:hidden;overflow-x:auto;}
-.tbl{width:100%;border-collapse:collapse;font-size:12px;min-width:920px;}
+.tbl{width:100%;border-collapse:collapse;font-size:12px;min-width:1240px;}
 .tbl th{font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:var(--gray-2);font-weight:500;padding:12px 16px;border-bottom:1px solid var(--line);text-align:right;background:var(--bg-2);white-space:nowrap;}
 .tbl th:first-child{text-align:left;}
 .tbl td{padding:11px 16px;border-bottom:1px solid var(--line);color:var(--off);text-align:right;font-family:monospace;font-size:11.5px;white-space:nowrap;}
@@ -536,7 +536,7 @@ body::before{
 
     <!-- TABLE -->
     <div class="section" id="table-sec">
-      <div class="section-head"><h2 class="section-title">Criativos / <em>Campanhas</em></h2><span class="section-tag">Filtro por campanha · Google por Ad Name + Video ID</span></div>
+      <div class="section-head"><h2 class="section-title">Criativos / <em>Campanhas</em></h2><span class="section-tag">Filtro por campanha · Google por Ad Name + Video ID · ticket R$ 341</span></div>
       <div class="tbl-wrap">
         <table class="tbl">
           <thead><tr>
@@ -548,6 +548,9 @@ body::before{
             <th class="sortable" data-sort="ctr">CTR <span class="sort-caret"></span></th>
             <th class="sortable" data-sort="cpc">CPC <span class="sort-caret"></span></th>
             <th class="sortable" data-sort="vendas">Conversões <span class="sort-caret"></span></th>
+            <th class="sortable" data-sort="receita">Receita <span class="sort-caret"></span></th>
+            <th class="sortable" data-sort="roas">ROAS <span class="sort-caret"></span></th>
+            <th class="sortable" data-sort="txconv">Tx. conversão <span class="sort-caret"></span></th>
           </tr></thead>
           <tbody id="tblCreativos"></tbody>
           <tfoot id="tblFoot"></tfoot>
@@ -600,6 +603,7 @@ let DP={viewDate:null,draftFrom:'',draftTo:'',draftPreset:'30'};
 let chartInstance=null;
 let TABLE_ROWS=[], TABLE_TOTALS=null;
 let SORT={key:'invest',dir:'desc'};
+const TICKET_CRIATIVOS = 341; // ticket fixo por conversão para Receita/ROAS na tabela de criativos
 let CAMPAIGNS=[]; // [{platform,name,key}]
 let VEN_PRODUCT_STATS={};
 const escAttr = s => String(s).replace(/"/g,'&quot;');
@@ -1503,7 +1507,14 @@ function renderTable(meta,google){
     if(!a.url) a.url=cleanUrl(r[COLS.metaPermalink]);
     a.invest+=parseMoney(r[COLS.metaSpend]); a.impr+=num(r[COLS.metaImpr]); a.clicks+=num(r[COLS.metaClick]); a.vendas+=num(r[COLS.metaPurch]);
   });
-  Object.values(metaBy).forEach(m=>{ m.ctr=m.impr>0?m.clicks/m.impr:0; m.cpc=m.clicks>0?m.invest/m.clicks:0; rows.push(m); });
+  Object.values(metaBy).forEach(m=>{
+    m.ctr=m.impr>0?m.clicks/m.impr:0;
+    m.cpc=m.clicks>0?m.invest/m.clicks:0;
+    m.receita=(m.vendas||0)*TICKET_CRIATIVOS;
+    m.roas=m.invest>0?m.receita/m.invest:0;
+    m.txconv=m.clicks>0?m.vendas/m.clicks:0;
+    rows.push(m);
+  });
   // Google agrupado por Ad Name. O permanent link é montado pelo Video ID:
   // https://www.youtube.com/watch?v=VIDEOID
   const gooBy={};
@@ -1516,12 +1527,29 @@ function renderTable(meta,google){
     if(!a.thumb) a.thumb=googleThumbUrl(r);
     a.invest+=googleSpendValue(r); a.impr+=num(colValue(r,COLS.gooImpr)); a.clicks+=num(colValue(r,COLS.gooClick)); a.vendas+=num(colValue(r,COLS.gooConv));
   });
-  Object.values(gooBy).forEach(m=>{ m.ctr=m.impr>0?m.clicks/m.impr:0; m.cpc=m.clicks>0?m.invest/m.clicks:0; rows.push(m); });
+  Object.values(gooBy).forEach(m=>{
+    m.ctr=m.impr>0?m.clicks/m.impr:0;
+    m.cpc=m.clicks>0?m.invest/m.clicks:0;
+    m.receita=(m.vendas||0)*TICKET_CRIATIVOS;
+    m.roas=m.invest>0?m.receita/m.invest:0;
+    m.txconv=m.clicks>0?m.vendas/m.clicks:0;
+    rows.push(m);
+  });
 
   TABLE_ROWS=rows;
-  let tI=0,tImp=0,tC=0,tV=0;
-  rows.forEach(m=>{ tI+=m.invest;tImp+=m.impr;tC+=m.clicks;tV+=m.vendas; });
-  TABLE_TOTALS={invest:tI,impr:tImp,clicks:tC,ctr:tImp>0?tC/tImp:0,cpc:tC>0?tI/tC:0,vendas:tV};
+  let tI=0,tImp=0,tC=0,tV=0,tReceita=0;
+  rows.forEach(m=>{ tI+=m.invest;tImp+=m.impr;tC+=m.clicks;tV+=m.vendas;tReceita+=m.receita; });
+  TABLE_TOTALS={
+    invest:tI,
+    impr:tImp,
+    clicks:tC,
+    ctr:tImp>0?tC/tImp:0,
+    cpc:tC>0?tI/tC:0,
+    vendas:tV,
+    receita:tReceita,
+    roas:tI>0?tReceita/tI:0,
+    txconv:tC>0?tV/tC:0
+  };
   paintTable();
 }
 function renderCreativeLabel(m){
@@ -1535,7 +1563,7 @@ function renderCreativeLabel(m){
 }
 function paintTable(){
   const body=document.getElementById('tblCreativos'), foot=document.getElementById('tblFoot');
-  if(!TABLE_ROWS.length){ body.innerHTML='<tr><td colspan="8" style="text-align:center;color:var(--gray-2);padding:32px;">Nenhum dado no período / seleção</td></tr>'; foot.innerHTML=''; updateSortIndicators(); return; }
+  if(!TABLE_ROWS.length){ body.innerHTML='<tr><td colspan="11" style="text-align:center;color:var(--gray-2);padding:32px;">Nenhum dado no período / seleção</td></tr>'; foot.innerHTML=''; updateSortIndicators(); return; }
   const {key,dir}=SORT, mul=dir==='asc'?1:-1;
   const sorted=[...TABLE_ROWS].sort((a,b)=>{
     if(key==='name'||key==='platform'){ return mul*String(a[key]).localeCompare(String(b[key]),'pt-BR'); }
@@ -1553,10 +1581,13 @@ function paintTable(){
       '<td>'+fmtP(m.ctr)+'</td>'+
       '<td>'+money2(m.cpc)+'</td>'+
       '<td>'+fmtN(m.vendas)+'</td>'+
+      '<td>'+money0(m.receita)+'</td>'+
+      '<td>'+fmtR(m.roas)+'</td>'+
+      '<td>'+fmtP(m.txconv)+'</td>'+
     '</tr>';
   }).join('');
   const t=TABLE_TOTALS;
-  foot.innerHTML='<tr><td></td><td class="cr-name">Total</td><td>'+money0(t.invest)+'</td><td>'+fmtN(t.impr)+'</td><td>'+fmtN(t.clicks)+'</td><td>'+fmtP(t.ctr)+'</td><td>'+money2(t.cpc)+'</td><td>'+fmtN(t.vendas)+'</td></tr>';
+  foot.innerHTML='<tr><td></td><td class="cr-name">Total</td><td>'+money0(t.invest)+'</td><td>'+fmtN(t.impr)+'</td><td>'+fmtN(t.clicks)+'</td><td>'+fmtP(t.ctr)+'</td><td>'+money2(t.cpc)+'</td><td>'+fmtN(t.vendas)+'</td><td>'+money0(t.receita)+'</td><td>'+fmtR(t.roas)+'</td><td>'+fmtP(t.txconv)+'</td></tr>';
   updateSortIndicators();
 }
 function updateSortIndicators(){
