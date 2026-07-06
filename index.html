@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Ticker · Wealth Performance Dashboard</title>
+<title>Ticker · Wealth Performance Dashboard · Criativos V2</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,500;1,9..144,300&family=Manrope:wght@300;400;500;600;700&family=JetBrains+Mono:wght@300;400&display=swap" rel="stylesheet">
@@ -1186,6 +1186,11 @@ function compute(){
     .filter(v => v.invest || v.leads || v.mql || v.mqlp || v.vendas)
     .sort((a,b) => (b.invest-a.invest) || (b.vendas-a.vendas) || (b.mqlp-a.mqlp) || (b.mql-a.mql) || (b.leads-a.leads));
 
+  // Diagnóstico: quando o HTML cai no DATA embutido antigo, CRM vem com 7 colunas
+  // e Marketing com 3 colunas — ou seja, não existem r[7] (CRM criativo) nem r[3]/r[4] (Ad Name/link).
+  // Nesse caso, não renderizamos a linha agregada "Sem criativo informado" como se fosse resultado real.
+  const hasCreativeSource = DATA.mk.some(r => cleanText(r[3])) || DATA.crm.some(r => cleanText(r[7]));
+
   // Monthly
   const monthly = {};
   for(const r of crm){
@@ -1200,7 +1205,7 @@ function compute(){
   }
   const monthlyArr = Object.entries(monthly).sort().map(([m,v])=>({month:m,...v}));
 
-  return {lead,mql,mqlp,vendas,invest,patr,srcMap,campRanked,creativeRanked,monthlyArr,
+  return {lead,mql,mqlp,vendas,invest,patr,srcMap,campRanked,creativeRanked,monthlyArr,hasCreativeSource,
           totalCRM:crm.length, totalMK:mk.length};
 }
 
@@ -1291,7 +1296,7 @@ function creativeLinkLabel(raw){
 
 function render(){
   const M = compute();
-  const {lead,mql,mqlp,vendas,invest,patr,srcMap,campRanked,creativeRanked,monthlyArr} = M;
+  const {lead,mql,mqlp,vendas,invest,patr,srcMap,campRanked,creativeRanked,monthlyArr,hasCreativeSource} = M;
 
   // Period label
   document.getElementById('periodLabel').textContent = `${fmtDate(state.from)} → ${fmtDate(state.to)} · ${monthlyArr.length} meses · ${fmt(lead+mql+mqlp+vendas)} eventos`;
@@ -1425,7 +1430,10 @@ function render(){
   const creativeTable = document.getElementById('creativeTable');
   const creativeNote = document.getElementById('creativeNote');
   creativeTable.innerHTML = '';
-  if(!creativeRanked || creativeRanked.length===0){
+  if(!hasCreativeSource){
+    creativeTable.innerHTML = '<div class="empty-state">A fonte carregada não trouxe Ad Name/link do marketing nem criativo do CRM. Por isso a tabela por criativo não pode ser calculada ainda.</div>';
+    creativeNote.textContent = 'Diagnóstico: o dashboard está usando dados locais/embutidos antigos ou a publicação CSV não trouxe as colunas esperadas. Verifique se o status está "Ao vivo" e se o console mostra ad name/link no MARKETING e criativo no CRM.';
+  } else if(!creativeRanked || creativeRanked.length===0){
     creativeTable.innerHTML = '<div class="empty-state">Sem criativos no período selecionado</div>';
     creativeNote.textContent = 'A tabela depende da coluna "Ad Name" no marketing e da coluna "criativo" no CRM; vendas vêm de "Fechou Consultoria" no CRM.';
   } else {
