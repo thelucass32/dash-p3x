@@ -343,6 +343,7 @@ body::before{
     <nav class="nav">
       <div class="nav-lbl">Visão geral</div>
       <button class="nav-item active" data-target="kpis"><span class="nav-dot"></span>KPIs</button>
+      <button class="nav-item" data-target="origem-sec"><span class="nav-dot"></span>Vendas por origem</button>
       <button class="nav-item" data-target="split-sec"><span class="nav-dot"></span>Meta × Google</button>
       <button class="nav-item" data-target="chart-sec"><span class="nav-dot"></span>Evolução diária</button>
       <button class="nav-item" data-target="funnel-sec"><span class="nav-dot"></span>Funil combinado</button>
@@ -440,6 +441,17 @@ body::before{
       <div class="kpi"><div class="kpi-lbl">CAC</div><div class="kpi-val"><span class="cur">R$</span><span id="kCAC">—</span></div><div class="kpi-sub">invest. ÷ vendas</div></div>
     </div>
 
+    <!-- VENDAS POR ORIGEM -->
+    <div class="section" id="origem-sec">
+      <div class="section-head"><h2 class="section-title">Vendas por <em>origem</em></h2><span class="section-tag">Segmentação · orgânico × pago</span></div>
+      <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr)">
+        <div class="kpi"><div class="kpi-lbl">Vendas Orgânicas</div><div class="kpi-val" id="kVendasOrg">—</div><div class="kpi-sub">segmentação · org</div></div>
+        <div class="kpi"><div class="kpi-lbl">Vendas Pago</div><div class="kpi-val" id="kVendasPago">—</div><div class="kpi-sub">ggs · igfb · yt · resp</div></div>
+        <div class="kpi"><div class="kpi-lbl">% Pago / Org</div><div class="kpi-val" id="kPagoOrgPct">—</div><div class="kpi-sub" id="kPagoOrgSub">—</div></div>
+        <div class="kpi"><div class="kpi-lbl">CAC Pago</div><div class="kpi-val"><span class="cur">R$</span><span id="kCacPago">—</span></div><div class="kpi-sub">invest. ÷ vendas pago</div></div>
+      </div>
+    </div>
+
     <!-- SPLIT META x GOOGLE -->
     <div class="section" id="split-sec">
       <div class="section-head"><h2 class="section-title">Meta <em>×</em> Google</h2><span class="section-tag">Investimento por canal</span></div>
@@ -478,6 +490,8 @@ body::before{
           <div class="legend-item"><div class="legend-dot" style="background:#00ff78"></div>Faturamento</div>
           <div class="legend-item"><div class="legend-dot" style="background:#e8a13c"></div>Investimento (Meta+Google)</div>
           <div class="legend-item"><div class="legend-dot" style="background:#3b8bff"></div>ROAS (eixo dir.)</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#f6f4ef"></div>CAC Geral (R$)</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#f2312c"></div>CAC Pago (R$)</div>
         </div>
         <div class="chart-canvas-wrap" id="chartWrap"><canvas id="chartDaily"></canvas></div>
       </div>
@@ -593,7 +607,8 @@ const COL_OVERRIDE = {
   gooConv:'', gooConvVal:'', gooPageView:'', gooCheckout:'', gooVideoId:'', gooPermalink:'', gooThumb:'',
   // VENDAS
   venDate:'', venDateBR:'', venProd:'', venStatus:'', venValue:'', venEmail:'', venPhone:'',
-  venTxnId:'', venBuyer:'', venRecurrency:'', venPaymentMode:''
+  venTxnId:'', venBuyer:'', venRecurrency:'', venPaymentMode:'',
+  venSegment:'', venMedium:''
 };
 
 let RAW = { meta: [], google: [], vendas: [] };
@@ -1010,6 +1025,16 @@ function isFirstRecurrencyValue(val){
   const m=t.match(/\d+/); if(m) return parseInt(m[0],10)===1;
   return false;
 }
+function venSegmentValue(r){ return COLS.venSegment ? String(r[COLS.venSegment]||'') : ''; }
+function venMediumValue(r){ return COLS.venMedium ? String(r[COLS.venMedium]||'') : ''; }
+function isOrganicSale(r){ return normText(venSegmentValue(r)).includes('org'); }
+function isPaidSale(r){
+  const seg=normText(venSegmentValue(r)), med=normText(venMediumValue(r));
+  if(seg.includes('ggs')||seg.includes('igfb')||seg.includes('yt')) return true;
+  if(med.includes('resp')) return true;
+  return false;
+}
+function saleQty(r){ if(!COLS.venQtd) return 1; const q=parseInt(r[COLS.venQtd]||1,10); return isNaN(q)?1:Math.max(1,q); }
 function venProductKey(r){ return COLS.venProd ? (normSpaced(r[COLS.venProd])||'__sem_produto__') : '__sem_produto__'; }
 function buildVenProductStats(){
   const buckets={};
@@ -1134,6 +1159,8 @@ function detectColumns(){
   COLS.venRecurrency=colFind(vh,[/^sales history recurrency number$/,/sales.?history.*recurrency.*number/,/recurrency.?number/,/recurrence.?number/,/recurring.?number/,/recorr[eê]ncia/,/recurrency/,/installments?.?number/,/n[uú]mero.?parcela/,/parcela.?n[uú]mero/,/installments?/,/parcela/,/payment.?number/,/charge.?number/]);
   if(!COLS.venRecurrency) COLS.venRecurrency = vh.find(isRecurrencyHeader) || null;
   COLS.venPaymentMode=colFind(vh,[/^sales history offer payment mode$/,/offer.*payment.*mode/,/^payment.?mode$/,/payment.?mode/,/modo.*pagamento/,/forma.*pagamento/]);
+  COLS.venSegment  = colFind(vh,[/segmenta[çc][aã]o/,/segmenta/,/^sck$/,/^src$/,/source.?check/,/tracking/]);
+  COLS.venMedium   = colFind(vh,[/^medium$/,/utm.?medium/,/m[ií]dia/,/^meio$/,/medium/]);
 
   // Overrides
   Object.keys(COL_OVERRIDE).forEach(k=>{ if(COL_OVERRIDE[k]) COLS[k]=COL_OVERRIDE[k]; });
@@ -1418,6 +1445,18 @@ function render(){
   venSales.forEach(r=>{ const d=venKpiDate(r); if(!d) return; const dd=(byDay[d]=byDay[d]||{invest:0,bruto:0,vendas:0}); const k=saleDedupeKey(r); const set=(daySaleKeys[d]=daySaleKeys[d]||new Set()); if(k&&!set.has(k)){ set.add(k); dd.vendas+=1; } });
   const vendas=countUniqueSales(venSales);
 
+  // ── Vendas por origem (segmentação / medium) ──
+  const venOrg=venSales.filter(isOrganicSale);
+  const venPago=venSales.filter(isPaidSale);
+  const vendasOrg=countUniqueSales(venOrg);
+  const vendasPago=countUniqueSales(venPago);
+  venSales.forEach(r=>{ const d=venKpiDate(r); if(!d) return; const dd=(byDay[d]=byDay[d]||{invest:0,bruto:0,vendas:0}); dd.vendasQtd=(dd.vendasQtd||0)+saleQty(r); if(isPaidSale(r)) dd.vendasPago=(dd.vendasPago||0)+saleQty(r); });
+  const cacPago=vendasPago>0?invest/vendasPago:0;
+  const totalOP=vendasPago+vendasOrg;
+  const paidShare=totalOP>0?vendasPago/totalOP:0;
+  const orgShare=totalOP>0?vendasOrg/totalOP:0;
+  const ratioPO=vendasOrg>0?vendasPago/vendasOrg:0;
+
   const liquido=bruto-invest;
   const roas=invest>0?bruto/invest:0;
   const cac=vendas>0?invest/vendas:0;
@@ -1441,6 +1480,11 @@ function render(){
   document.getElementById('kLiquidoSub').innerHTML = liquido>=0 ? '<span class="badge badge-green">▲ lucro</span>' : '<span class="badge badge-red">▼ prejuízo</span>';
   setText('kROAS',fmtR(roas));
   setText('kCAC',fmtM(cac));
+  setText('kVendasOrg',fmtN(vendasOrg));
+  setText('kVendasPago',fmtN(vendasPago));
+  setText('kPagoOrgPct',fmtP(paidShare));
+  document.getElementById('kPagoOrgSub').innerHTML='Org '+fmtP(orgShare)+' · P/O '+fmtR(ratioPO);
+  setText('kCacPago',fmtM(cacPago));
 
   // Split Meta x Google
   const mCTR=M.impr>0?M.clicks/M.impr:0, mCPC=M.clicks>0?M.invest/M.clicks:0;
@@ -1473,6 +1517,10 @@ function renderChart(byDay){
   const fat=days.map(d=>byDay[d].bruto||0);
   const inv=days.map(d=>byDay[d].invest||0);
   const rs=days.map((d,i)=>inv[i]>0?fat[i]/inv[i]:0);
+  const vTot=days.map(d=>byDay[d].vendasQtd||0);
+  const vPag=days.map(d=>byDay[d].vendasPago||0);
+  const cacG=days.map((d,i)=>vTot[i]>0?inv[i]/vTot[i]:null);
+  const cacP=days.map((d,i)=>vPag[i]>0?inv[i]/vPag[i]:null);
   const ctx=document.getElementById('chartDaily').getContext('2d');
   if(chartInstance) chartInstance.destroy();
   chartInstance=new Chart(ctx,{
@@ -1480,7 +1528,9 @@ function renderChart(byDay){
     data:{labels:days,datasets:[
       {label:'Faturamento',data:fat,borderColor:'#00ff78',backgroundColor:'rgba(0,255,120,.06)',borderWidth:2,tension:.35,pointRadius:2,fill:true,yAxisID:'y'},
       {label:'Investimento',data:inv,borderColor:'#e8a13c',backgroundColor:'rgba(232,161,60,.06)',borderWidth:2,tension:.35,pointRadius:2,fill:true,yAxisID:'y'},
-      {label:'ROAS',data:rs,borderColor:'#3b8bff',borderWidth:1.5,tension:.35,pointRadius:2,borderDash:[4,3],yAxisID:'y2'}
+      {label:'ROAS',data:rs,borderColor:'#3b8bff',borderWidth:1.5,tension:.35,pointRadius:2,borderDash:[4,3],yAxisID:'y2'},
+      {label:'CAC Geral',data:cacG,borderColor:'#f6f4ef',borderWidth:1.5,tension:.35,pointRadius:2,borderDash:[2,2],spanGaps:true,yAxisID:'y3'},
+      {label:'CAC Pago',data:cacP,borderColor:'#f2312c',borderWidth:1.5,tension:.35,pointRadius:2,spanGaps:true,yAxisID:'y3'}
     ]},
     options:{
       responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
@@ -1488,7 +1538,8 @@ function renderChart(byDay){
       scales:{
         x:{grid:{color:'#2e2e2b'},ticks:{color:'#55554f',font:{size:9},maxRotation:0,autoSkip:true,maxTicksLimit:12}},
         y:{grid:{color:'#2e2e2b'},ticks:{color:'#888',font:{size:9},callback:v=>'R$'+fmtN(v)},position:'left'},
-        y2:{grid:{display:false},ticks:{color:'#3b8bff',font:{size:9},callback:v=>v.toFixed(1)+'x'},position:'right'}
+        y2:{grid:{display:false},ticks:{color:'#3b8bff',font:{size:9},callback:v=>v.toFixed(1)+'x'},position:'right'},
+        y3:{grid:{display:false},position:'right',suggestedMin:0,ticks:{color:'#f2312c',font:{size:9},callback:v=>'R$'+fmtN(v)}}
       }
     }
   });
