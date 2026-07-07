@@ -628,7 +628,7 @@ const COL_OVERRIDE = {
   // VENDAS
   venDate:'', venDateBR:'', venProd:'', venStatus:'', venValue:'', venEmail:'', venPhone:'',
   venTxnId:'', venBuyer:'', venRecurrency:'', venPaymentMode:'',
-  venSegment:'', venMedium:'', venUtmContent:'',
+  venSegment:'', venMedium:'', venUtmContent:'', venUtmSource:'',
   // GA4
   ga4Date:'', ga4Url:'', ga4Views:''
 };
@@ -756,7 +756,7 @@ const PROXIES=[
   u=>u,
   u=>'https://api.codetabs.com/v1/proxy?quest='+encodeURIComponent(u),
   u=>'https://api.allorigins.win/raw?url='+encodeURIComponent(u),
-  u=>'https://thingproxy.freeboard.io/fetch/'+u
+  u=>'https://corsproxy.io/?url='+encodeURIComponent(u)
 ];
 function looksLikeCSV(text){
   if(!text || text.length < 5) return false;
@@ -1051,11 +1051,23 @@ function isFirstRecurrencyValue(val){
 }
 function venSegmentValue(r){ return COLS.venSegment ? String(r[COLS.venSegment]||'') : ''; }
 function venMediumValue(r){ return COLS.venMedium ? String(r[COLS.venMedium]||'') : ''; }
-function isOrganicSale(r){ return normText(venSegmentValue(r)).includes('org'); }
+function venUtmSourceValue(r){ return COLS.venUtmSource ? String(r[COLS.venUtmSource]||'') : ''; }
+// PAGO = utm_source em {ggs, igfb} OU (utm_source=yt E medium contém 'resp')
 function isPaidSale(r){
-  const seg=normText(venSegmentValue(r)), med=normText(venMediumValue(r));
-  if(seg.includes('ggs')||seg.includes('igfb')||seg.includes('yt')) return true;
-  if(med.includes('resp')) return true;
+  const src=normText(venUtmSourceValue(r)).trim();
+  const med=normText(venMediumValue(r));
+  if(src==='ggs'||src==='igfb') return true;
+  if(src==='yt' && med.includes('resp')) return true;
+  return false;
+}
+function isOrganicSale(r){
+  if(isPaidSale(r)) return false;
+  const seg=normText(venSegmentValue(r));
+  const src=normText(venUtmSourceValue(r)).trim();
+  const med=normText(venMediumValue(r));
+  if(seg.includes('org')) return true;
+  if(med.includes('org')) return true;
+  if(['direct','www.google.com','br.search.yahoo.com','site','yt','ig','email','whats'].includes(src)) return true;
   return false;
 }
 function saleQty(r){ if(!COLS.venQtd) return 1; const q=parseInt(r[COLS.venQtd]||1,10); return isNaN(q)?1:Math.max(1,q); }
@@ -1202,6 +1214,7 @@ function detectColumns(){
   COLS.venSegment  = colFind(vh,[/segmenta[çc][aã]o/,/segmenta/,/^sck$/,/^src$/,/source.?check/,/tracking/]);
   COLS.venMedium   = colFind(vh,[/^medium$/,/utm.?medium/,/m[ií]dia/,/^meio$/,/medium/]);
   COLS.venUtmContent = colFind(vh,[/^utm.?content$/,/utm.?content/,/^content$/,/variante/,/conteudo/]);
+  COLS.venUtmSource  = colFind(vh,[/^utm.?source$/,/utm.?source/,/^source$/,/^origem$/,/canal.?origem/]);
 
   // ── GA4 ──
   const ga4h = RAW.ga4[0] ? Object.keys(RAW.ga4[0]) : [];
