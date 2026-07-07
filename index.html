@@ -348,6 +348,7 @@ body::before{
       <button class="nav-item" data-target="chart-sec"><span class="nav-dot"></span>Evolução diária</button>
       <button class="nav-item" data-target="funnel-sec"><span class="nav-dot"></span>Funil combinado</button>
       <button class="nav-item" data-target="table-sec"><span class="nav-dot"></span>Criativos / Campanhas</button>
+      <button class="nav-item" data-target="variant-sec"><span class="nav-dot"></span>Conversão por variante</button>
     </nav>
     <div class="sb-foot">
       <div class="sb-foot-lbl">Produto</div>
@@ -571,6 +572,24 @@ body::before{
         </table>
       </div>
     </div>
+
+    <!-- CONVERSÃO POR VARIANTE -->
+    <div class="section" id="variant-sec">
+      <div class="section-head"><h2 class="section-title">Conversão por <em>variante</em></h2><span class="section-tag">GA4 pageviews × vendas (utm_content) · ticket R$ 341</span></div>
+      <div class="tbl-wrap">
+        <table class="tbl" style="min-width:820px">
+          <thead><tr>
+            <th class="sortable" data-vsort="variant">Variante <span class="sort-caret"></span></th>
+            <th class="sortable" data-vsort="views">Pageviews <span class="sort-caret"></span></th>
+            <th class="sortable" data-vsort="vendas">Vendas <span class="sort-caret"></span></th>
+            <th class="sortable" data-vsort="txconv">Tx. conversão <span class="sort-caret"></span></th>
+            <th class="sortable" data-vsort="receita">Receita <span class="sort-caret"></span></th>
+          </tr></thead>
+          <tbody id="tblVariant"></tbody>
+          <tfoot id="tblVariantFoot"></tfoot>
+        </table>
+      </div>
+    </div>
   </main>
 </div>
 
@@ -586,7 +605,8 @@ const SHEET_ID = '';
 const URLS = {
   meta:   'https://docs.google.com/spreadsheets/d/e/2PACX-1vSXqOgB4wG8pI2CITSSXrBGz2If8Cu01K2UifJ-INpIVPmsS33zz9LcgEmewUUwZufKfdmnMTM62Cf9/pub?gid=0&single=true&output=csv',
   google: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSXqOgB4wG8pI2CITSSXrBGz2If8Cu01K2UifJ-INpIVPmsS33zz9LcgEmewUUwZufKfdmnMTM62Cf9/pub?gid=922183081&single=true&output=csv',
-  vendas: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSXqOgB4wG8pI2CITSSXrBGz2If8Cu01K2UifJ-INpIVPmsS33zz9LcgEmewUUwZufKfdmnMTM62Cf9/pub?gid=433847668&single=true&output=csv'
+  vendas: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSXqOgB4wG8pI2CITSSXrBGz2If8Cu01K2UifJ-INpIVPmsS33zz9LcgEmewUUwZufKfdmnMTM62Cf9/pub?gid=433847668&single=true&output=csv',
+  ga4:    'https://docs.google.com/spreadsheets/d/e/2PACX-1vSXqOgB4wG8pI2CITSSXrBGz2If8Cu01K2UifJ-INpIVPmsS33zz9LcgEmewUUwZufKfdmnMTM62Cf9/pub?gid=153130890&single=true&output=csv'
 };
 
 // Status de transação FIXO em "paid" (sem caixa de seleção).
@@ -608,15 +628,19 @@ const COL_OVERRIDE = {
   // VENDAS
   venDate:'', venDateBR:'', venProd:'', venStatus:'', venValue:'', venEmail:'', venPhone:'',
   venTxnId:'', venBuyer:'', venRecurrency:'', venPaymentMode:'',
-  venSegment:'', venMedium:''
+  venSegment:'', venMedium:'', venUtmContent:'',
+  // GA4
+  ga4Date:'', ga4Url:'', ga4Views:''
 };
 
-let RAW = { meta: [], google: [], vendas: [] };
+let RAW = { meta: [], google: [], vendas: [], ga4: [] };
 let COLS = {};
 let DATE_MIN='', DATE_MAX='';
 let DP={viewDate:null,draftFrom:'',draftTo:'',draftPreset:'30'};
 let chartInstance=null;
 let TABLE_ROWS=[], TABLE_TOTALS=null;
+let VARIANT_ROWS=[], VARIANT_TOTALS=null;
+let VSORT={key:'txconv',dir:'desc'};
 let SORT={key:'invest',dir:'desc'};
 const TICKET_CRIATIVOS = 341; // ticket fixo por conversão para Receita/ROAS na tabela de criativos
 let CAMPAIGNS=[]; // [{platform,name,key}]
@@ -1035,6 +1059,22 @@ function isPaidSale(r){
   return false;
 }
 function saleQty(r){ if(!COLS.venQtd) return 1; const q=parseInt(r[COLS.venQtd]||1,10); return isNaN(q)?1:Math.max(1,q); }
+// Extrai o slug da variante (p3x-a, p3x-b, ...) de qualquer string (URL do GA4 ou utm_content)
+function extractVariant(s){
+  if(!s && s!==0) return '';
+  const m=String(s).toLowerCase().match(/p3x[-_]?([a-z0-9]+)/i);
+  return m ? ('p3x-'+m[1]) : '';
+}
+function ga4Variant(r){ return extractVariant(colValue(r,COLS.ga4Url)); }
+function venVariant(r){ return extractVariant(colValue(r,COLS.venUtmContent)); }
+function ga4ViewsValue(r){ return num(colValue(r,COLS.ga4Views)); }
+function ga4Date(r){ return parseDate(colValue(r,COLS.ga4Date)); }
+function filterGA4(f){
+  return (RAW.ga4||[]).filter(r=>{
+    if(!passDateFilter(r,COLS.ga4Date,f.from,f.to,'GA4')) return false;
+    return true;
+  });
+}
 function venProductKey(r){ return COLS.venProd ? (normSpaced(r[COLS.venProd])||'__sem_produto__') : '__sem_produto__'; }
 function buildVenProductStats(){
   const buckets={};
@@ -1161,6 +1201,13 @@ function detectColumns(){
   COLS.venPaymentMode=colFind(vh,[/^sales history offer payment mode$/,/offer.*payment.*mode/,/^payment.?mode$/,/payment.?mode/,/modo.*pagamento/,/forma.*pagamento/]);
   COLS.venSegment  = colFind(vh,[/segmenta[çc][aã]o/,/segmenta/,/^sck$/,/^src$/,/source.?check/,/tracking/]);
   COLS.venMedium   = colFind(vh,[/^medium$/,/utm.?medium/,/m[ií]dia/,/^meio$/,/medium/]);
+  COLS.venUtmContent = colFind(vh,[/^utm.?content$/,/utm.?content/,/^content$/,/variante/,/conteudo/]);
+
+  // ── GA4 ──
+  const ga4h = RAW.ga4[0] ? Object.keys(RAW.ga4[0]) : [];
+  COLS.ga4Date = colFind(ga4h,[/^date$/,/^data$/,/^dia$/,/^day$/,/data/,/date/]) || bestDateColumn(ga4h,RAW.ga4);
+  COLS.ga4Url  = colFind(ga4h,[/page.?path.*screen|page.?path/,/landing.?page/,/page.?location/,/^url$/,/^p[aá]gina$/,/p[aá]gina/,/caminho/,/path/,/location/,/url/]);
+  COLS.ga4Views= colFind(ga4h,[/^views$/,/^pageviews$/,/page.?views/,/screen.?page.?views/,/visualiza[çc][õo]es.*p[aá]gina/,/visualiza[çc][õo]es/,/visualiza/,/views/]);
 
   // Overrides
   Object.keys(COL_OVERRIDE).forEach(k=>{ if(COL_OVERRIDE[k]) COLS[k]=COL_OVERRIDE[k]; });
@@ -1187,6 +1234,8 @@ function detectColumns(){
   console.log('[P3X] Cabeçalhos Meta:',mh);
   console.log('[P3X] Cabeçalhos Google:',gh);
   console.log('[P3X] Cabeçalhos Vendas:',vh);
+  console.log('%c[P3X] GA4:','color:#00ff78;font-weight:bold',{date:COLS.ga4Date,url:COLS.ga4Url,views:COLS.ga4Views,segCol:COLS.venUtmContent});
+  console.log('[P3X] Cabeçalhos GA4:',ga4h);
 
   // Diagnóstico status vendas
   if(RAW.vendas.length){
@@ -1221,9 +1270,12 @@ async function loadData(){
     const m = await fetchCSV(URLS.meta);
     const g = await fetchCSV(URLS.google);
     const v = await fetchCSV(URLS.vendas);
+    let ga = '';
+    try { ga = await fetchCSV(URLS.ga4); } catch(e){ console.warn('[P3X] GA4 indisponível:',e); }
     RAW.meta=cleanRows(csvToObjects(m),'Meta');
     RAW.google=cleanRows(csvToObjects(g),'Google');
     RAW.vendas=cleanRows(csvToObjects(v),'Vendas');
+    RAW.ga4=ga?cleanRows(csvToObjects(ga),'GA4'):[];
     detectColumns();
     // Nome do produto (único) para a sidebar
     let prodName='—';
@@ -1509,6 +1561,7 @@ function render(){
 
   renderChart(byDay);
   renderTable(meta,google);
+  renderVariantTable(f,venSales);
 }
 
 // ═══ CHART ═══
@@ -1648,6 +1701,52 @@ function updateSortIndicators(){
   });
 }
 
+// ═══ TABELA — CONVERSÃO POR VARIANTE (GA4 pageviews × vendas utm_content) ═══
+function renderVariantTable(f,venSales){
+  const ga4=filterGA4(f);
+  const byVar={};
+  const get=v=>(byVar[v]=byVar[v]||{variant:v,views:0,vendas:0});
+  // Pageviews do GA4 por variante
+  ga4.forEach(r=>{ const v=ga4Variant(r); if(!v) return; get(v).views+=ga4ViewsValue(r); });
+  // Vendas por variante (utm_content), respeitando qtd
+  (venSales||[]).forEach(r=>{ const v=venVariant(r); if(!v) return; get(v).vendas+=saleQty(r); });
+  const rows=Object.values(byVar);
+  rows.forEach(m=>{ m.txconv=m.views>0?m.vendas/m.views:0; m.receita=(m.vendas||0)*TICKET_CRIATIVOS; });
+  VARIANT_ROWS=rows;
+  let tViews=0,tVen=0,tRec=0;
+  rows.forEach(m=>{ tViews+=m.views; tVen+=m.vendas; tRec+=m.receita; });
+  VARIANT_TOTALS={views:tViews,vendas:tVen,receita:tRec,txconv:tViews>0?tVen/tViews:0};
+  paintVariantTable();
+}
+function paintVariantTable(){
+  const body=document.getElementById('tblVariant'), foot=document.getElementById('tblVariantFoot');
+  if(!body) return;
+  if(!VARIANT_ROWS.length){ body.innerHTML='<tr><td colspan="5" style="text-align:center;color:var(--gray-2);padding:32px;">Sem dados de GA4 / variantes no período (confira a aba GA4 e o utm_content)</td></tr>'; foot.innerHTML=''; updateVariantSortIndicators(); return; }
+  const {key,dir}=VSORT, mul=dir==='asc'?1:-1;
+  const sorted=[...VARIANT_ROWS].sort((a,b)=>{
+    if(key==='variant'){ return mul*String(a.variant).localeCompare(String(b.variant),'pt-BR'); }
+    let x=a[key],y=b[key]; x=(x==null)?-Infinity:x; y=(y==null)?-Infinity:y; return mul*(x-y);
+  });
+  body.innerHTML=sorted.map(m=>{
+    return '<tr>'+
+      '<td class="cr-name" style="text-transform:uppercase;font-weight:600;color:var(--off)">'+escHtml(m.variant)+'</td>'+
+      '<td>'+fmtN(m.views)+'</td>'+
+      '<td>'+fmtN(m.vendas)+'</td>'+
+      '<td>'+fmtP(m.txconv)+'</td>'+
+      '<td>'+money0(m.receita)+'</td>'+
+    '</tr>';
+  }).join('');
+  const t=VARIANT_TOTALS;
+  foot.innerHTML='<tr><td class="cr-name">Total</td><td>'+fmtN(t.views)+'</td><td>'+fmtN(t.vendas)+'</td><td>'+fmtP(t.txconv)+'</td><td>'+money0(t.receita)+'</td></tr>';
+  updateVariantSortIndicators();
+}
+function updateVariantSortIndicators(){
+  document.querySelectorAll('#variant-sec th.sortable').forEach(th=>{
+    const active=th.dataset.vsort===VSORT.key; th.classList.toggle('sort-active',active);
+    const car=th.querySelector('.sort-caret'); if(car) car.textContent=active?(VSORT.dir==='asc'?'▲':'▼'):'';
+  });
+}
+
 // ═══ LOGIN ═══
 function initLogin(){
   const form=document.getElementById('loginForm'), error=document.getElementById('loginError');
@@ -1688,6 +1787,14 @@ function initEvents(){
       if(SORT.key===key){ SORT.dir=SORT.dir==='asc'?'desc':'asc'; }
       else { SORT.key=key; SORT.dir=(key==='name'||key==='platform')?'asc':'desc'; }
       paintTable();
+    });
+  });
+  document.querySelectorAll('#variant-sec th.sortable').forEach(th=>{
+    th.addEventListener('click',()=>{
+      const key=th.dataset.vsort;
+      if(VSORT.key===key){ VSORT.dir=VSORT.dir==='asc'?'desc':'asc'; }
+      else { VSORT.key=key; VSORT.dir=(key==='variant')?'asc':'desc'; }
+      paintVariantTable();
     });
   });
   const chartCard=document.getElementById('chartCard'), fsBtn=document.getElementById('chartFsBtn');
