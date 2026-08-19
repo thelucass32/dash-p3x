@@ -960,8 +960,23 @@ function bestTextColumn(headers, rows, preferred){
   return bestScore>20?best:null;
 }
 function colValue(r,col){ return col ? r[col] : ''; }
+function parseGoogleSpendNumber(value){
+  if(value===null||value===undefined||value==='') return 0;
+  if(typeof value==='number') return isNaN(value)?0:value;
+  const raw=String(value)
+    .replace(/&nbsp;/gi,' ')
+    .replace(/[%R$€£\s]/gi,'')
+    .replace(/[^0-9,.-]/g,'');
+  const commas=(raw.match(/,/g)||[]).length;
+  const dots=(raw.match(/\./g)||[]).length;
+  // O custo diário do Google pode vir com 3–6 casas decimais (ex.: 4,319).
+  // Com um único separador, ele é decimal — não um agrupador de milhar.
+  if(commas===1&&dots===0){ const n=Number(raw.replace(',','.')); if(!isNaN(n)) return n; }
+  if(dots===1&&commas===0){ const n=Number(raw); if(!isNaN(n)) return n; }
+  return parseMoney(value);
+}
 function moneyFromColumn(r,col){
-  let v=parseMoney(colValue(r,col));
+  let v=parseGoogleSpendNumber(colValue(r,col));
   if(col && /micros|micro/.test(normCompact(col))) v=v/1000000;
   return v;
 }
