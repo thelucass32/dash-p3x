@@ -1168,11 +1168,13 @@ function venKpiDate(r){
 }
 function saleDedupeKey(r){
   const identity=emailKey(r);
-  if(identity&&identity.startsWith('txn:')) return identity;
+  // Sem identificador real, cada linha representa uma venda distinta.
+  // Não deduplicar apenas por data + produto: várias compras legítimas podem ocorrer no mesmo dia.
+  if(!identity) return '';
+  if(identity.startsWith('txn:')) return identity;
   const orderDate=(venSaleDate(r)||'').slice(0,10);
   const product=COLS.venProd?String(r[COLS.venProd]||'').trim().toLowerCase():'';
-  if(identity) return identity+'|'+orderDate+'|'+product;
-  return 'anon|'+orderDate+'|'+product;
+  return identity+'|'+orderDate+'|'+product;
 }
 
 // ═══ DETECT COLUMNS ═══
