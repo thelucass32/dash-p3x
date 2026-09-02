@@ -484,13 +484,13 @@ body::before{
 
 <!-- FUNNEL COMBINADO -->
 <div class="section" id="funnel-sec">
-  <div class="section-head"><h2 class="section-title">Funil <em>combinado</em></h2><span class="section-tag">Meta + Google no topo · vendas paid na base</span></div>
+  <div class="section-head"><h2 class="section-title">Funil <em>combinado</em></h2><span class="section-tag">Meta + Google · conversões atribuídas na base</span></div>
   <div class="funnel-wrap">
     <div class="funnel-grid">
       <div class="side-rates">
         <div class="sr-item l"><div class="sr-lbl">Connect Rate</div><div class="sr-val green" id="fConnRate">—</div><div class="sr-hint">visualização ÷ cliques</div></div>
         <div class="sr-item l"><div class="sr-lbl">Checkout / Visita</div><div class="sr-val" id="fCheckRate">—</div><div class="sr-hint">início checkout ÷ visualização</div></div>
-        <div class="sr-item l"><div class="sr-lbl">Conversão</div><div class="sr-val" id="fConvRate">—</div><div class="sr-hint">vendas ÷ visualizações de página</div></div>
+        <div class="sr-item l"><div class="sr-lbl">Conversão</div><div class="sr-val" id="fConvRate">—</div><div class="sr-hint">vendas atribuídas ÷ visualizações</div></div>
       </div>
       <svg id="funnelSVG" viewBox="0 0 680 500" xmlns="http://www.w3.org/2000/svg">
         <defs>
@@ -1533,6 +1533,8 @@ function render(){
   const clicks=M.clicks+G.clicks;
   const pviews=M.pviews+G.pviews;
   const checkout=M.checkout+G.checkout;
+  // Mesmo total de conversões atribuído às campanhas exibido na tabela de criativos.
+  const vendasAtribuidas=M.conv+G.conv;
 
   // ── Vendas (fonte VENDAS, status paid) ──
   let bruto=0;
@@ -1559,13 +1561,13 @@ function render(){
   const cpc=clicks>0?invest/clicks:0;
   const cpv=pviews>0?invest/pviews:0;
   const cpck=checkout>0?invest/checkout:0;
-  const cpa=vendas>0?invest/vendas:0;
+  const cpa=vendasAtribuidas>0?invest/vendasAtribuidas:0;
   const connRate=clicks>0?pviews/clicks:0;
   const checkRate=pviews>0?checkout/pviews:0;
-  const convRate=pviews>0?vendas/pviews:0;
+  const convRate=pviews>0?vendasAtribuidas/pviews:0;
 
   console.log('%c[P3X] RENDER '+f.from+' → '+f.to+':','color:#00ff78;font-weight:bold',
-    {faturamento:money2(bruto),vendas,invest:money2(invest),meta:money2(M.invest),google:money2(G.invest),roas:fmtR(roas),cac:money2(cac)});
+    {faturamento:money2(bruto),vendas,vendasAtribuidas,invest:money2(invest),meta:money2(M.invest),google:money2(G.invest),roas:fmtR(roas),cac:money2(cac)});
 
   // KPIs
   setText('kVendas',fmtN(vendas));
@@ -1592,7 +1594,7 @@ function render(){
   setText('fCliques',fmtN(clicks));
   setText('fPageViews',fmtN(pviews));
   setText('fCheckout',fmtN(checkout));
-  setText('fVendas',fmtN(vendas));
+  setText('fVendas',fmtN(vendasAtribuidas));
   setText('fCPMr','R$ '+fmtM(cpm));
   setText('fCPCr','R$ '+fmtM(cpc));
   setText('fCPVr','R$ '+fmtM(cpv));
