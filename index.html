@@ -589,6 +589,7 @@ const SHEET_ID = '';
 const URLS = {
   meta:   'https://docs.google.com/spreadsheets/d/e/2PACX-1vSXqOgB4wG8pI2CITSSXrBGz2If8Cu01K2UifJ-INpIVPmsS33zz9LcgEmewUUwZufKfdmnMTM62Cf9/pub?gid=0&single=true&output=csv',
   google: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSXqOgB4wG8pI2CITSSXrBGz2If8Cu01K2UifJ-INpIVPmsS33zz9LcgEmewUUwZufKfdmnMTM62Cf9/pub?gid=922183081&single=true&output=csv',
+  googleSearch: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSXqOgB4wG8pI2CITSSXrBGz2If8Cu01K2UifJ-INpIVPmsS33zz9LcgEmewUUwZufKfdmnMTM62Cf9/pub?gid=1905966224&single=true&output=csv',
   vendas: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSXqOgB4wG8pI2CITSSXrBGz2If8Cu01K2UifJ-INpIVPmsS33zz9LcgEmewUUwZufKfdmnMTM62Cf9/pub?gid=433847668&single=true&output=csv',
   ga4:    'https://docs.google.com/spreadsheets/d/e/2PACX-1vSXqOgB4wG8pI2CITSSXrBGz2If8Cu01K2UifJ-INpIVPmsS33zz9LcgEmewUUwZufKfdmnMTM62Cf9/pub?gid=153130890&single=true&output=csv'
 };
@@ -1297,12 +1298,23 @@ async function loadData(){
   setStatus('loading','Carregando dados…');
   try{
     const m = await fetchCSV(URLS.meta);
-    const g = await fetchCSV(URLS.google);
+    const googleSources = [
+      {label:'Google YouTube',url:URLS.google},
+      {label:'Google Search',url:URLS.googleSearch}
+    ];
+    const googleResults = await Promise.allSettled(googleSources.map(source=>fetchCSV(source.url)));
+    const googleRows=[];
+    googleResults.forEach((result,index)=>{
+      const source=googleSources[index];
+      if(result.status==='fulfilled') googleRows.push(...cleanRows(csvToObjects(result.value),source.label));
+      else console.warn('[P3X] '+source.label+' indisponível:',result.reason);
+    });
+    if(!googleRows.length) throw new Error('Nenhuma fonte do Google Ads pôde ser carregada.');
     const v = await fetchCSV(URLS.vendas);
     let ga = '';
     try { ga = await fetchCSV(URLS.ga4); } catch(e){ console.warn('[P3X] GA4 indisponível:',e); }
     RAW.meta=cleanRows(csvToObjects(m),'Meta');
-    RAW.google=cleanRows(csvToObjects(g),'Google');
+    RAW.google=googleRows;
     RAW.vendas=cleanRows(csvToObjects(v),'Vendas');
     RAW.ga4=ga?cleanRows(csvToObjects(ga),'GA4'):[];
     detectColumns();
