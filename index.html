@@ -484,7 +484,7 @@ body::before{
 
 <!-- FUNNEL COMBINADO -->
 <div class="section" id="funnel-sec">
-  <div class="section-head"><h2 class="section-title">Funil <em>combinado</em></h2><span class="section-tag">Meta + Google · conversões atribuídas na base</span></div>
+  <div class="section-head"><h2 class="section-title">Funil <em>combinado</em></h2><span class="section-tag">Meta + Google · vendas pago (last-click) na base</span></div>
   <div class="funnel-wrap">
     <div class="funnel-grid">
       <div class="side-rates">
@@ -1533,9 +1533,6 @@ function render(){
   const clicks=M.clicks+G.clicks;
   const pviews=M.pviews+G.pviews;
   const checkout=M.checkout+G.checkout;
-  // Mesmo total de conversões atribuído às campanhas exibido na tabela de criativos.
-  const vendasAtribuidas=M.conv+G.conv;
-
   // ── Vendas (fonte VENDAS, status paid) ──
   let bruto=0;
   venRevenue.forEach(r=>{ const v=parseMoney(r[COLS.venValue]); bruto+=v; const d=venKpiDate(r); if(d){ (byDay[d]=byDay[d]||{invest:0,bruto:0,vendas:0}).bruto+=v; } });
@@ -1547,6 +1544,8 @@ function render(){
   const venPago=uniqueVenSales.filter(isPaidSale);
   const vendasOrg=countUniqueSales(venOrg);
   const vendasPago=countUniqueSales(venPago);
+  // Funil usa last-click (Vendas Pago: ggs · igfb · yt/resp) em vez das conversões atribuídas pelas plataformas de mídia.
+  const vendasAtribuidas=vendasPago;
   uniqueVenSales.forEach(r=>{ const d=venKpiDate(r); if(!d) return; const dd=(byDay[d]=byDay[d]||{invest:0,bruto:0,vendas:0}); dd.vendasQtd=(dd.vendasQtd||0)+saleQty(r); if(isPaidSale(r)) dd.vendasPago=(dd.vendasPago||0)+saleQty(r); });
   const cacPago=vendasPago>0?invest/vendasPago:0;
   const totalOP=vendasPago+vendasOrg;
